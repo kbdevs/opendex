@@ -8,7 +8,8 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const DEFAULT_STATE_DIR_NAME = ".remodex";
+const DEFAULT_STATE_DIR_NAME = ".opendex";
+const LEGACY_STATE_DIR_NAME = ".remodex";
 const DAEMON_CONFIG_FILE = "daemon-config.json";
 const PAIRING_SESSION_FILE = "pairing-session.json";
 const BRIDGE_STATUS_FILE = "bridge-status.json";
@@ -16,10 +17,25 @@ const LOGS_DIR = "logs";
 const BRIDGE_STDOUT_LOG_FILE = "bridge.stdout.log";
 const BRIDGE_STDERR_LOG_FILE = "bridge.stderr.log";
 
-// Reuses the existing Remodex state root so daemon mode keeps the same local-first storage model.
+// Reuses an existing legacy state root when present so daemon mode can migrate cleanly.
 function resolveRemodexStateDir({ env = process.env, osImpl = os } = {}) {
-  return normalizeNonEmptyString(env.REMODEX_DEVICE_STATE_DIR)
-    || path.join(osImpl.homedir(), DEFAULT_STATE_DIR_NAME);
+  return (
+    normalizeNonEmptyString(env.OPENDEX_DEVICE_STATE_DIR) ||
+    normalizeNonEmptyString(env.REMODEX_DEVICE_STATE_DIR) ||
+    resolveDefaultStateDir(osImpl)
+  );
+}
+
+function resolveDefaultStateDir(osImpl = os) {
+  const opendexPath = path.join(osImpl.homedir(), DEFAULT_STATE_DIR_NAME);
+  if (fs.existsSync(opendexPath)) {
+    return opendexPath;
+  }
+  const legacyPath = path.join(osImpl.homedir(), LEGACY_STATE_DIR_NAME);
+  if (fs.existsSync(legacyPath)) {
+    return legacyPath;
+  }
+  return opendexPath;
 }
 
 function resolveDaemonConfigPath(options = {}) {
@@ -55,11 +71,18 @@ function readDaemonConfig(options = {}) {
 }
 
 // Persists the pairing payload so foreground CLI commands can render the QR locally.
-function writePairingSession(pairingPayload, { now = () => Date.now(), ...options } = {}) {
-  writeJsonFile(resolvePairingSessionPath(options), {
-    createdAt: new Date(now()).toISOString(),
-    pairingPayload,
-  }, options);
+function writePairingSession(
+  pairingPayload,
+  { now = () => Date.now(), ...options } = {},
+) {
+  writeJsonFile(
+    resolvePairingSessionPath(options),
+    {
+      createdAt: new Date(now()).toISOString(),
+      pairingPayload,
+    },
+    options,
+  );
 }
 
 function readPairingSession(options = {}) {
@@ -71,11 +94,18 @@ function clearPairingSession({ fsImpl = fs, ...options } = {}) {
 }
 
 // Captures the last known service heartbeat so `remodex status` does not depend on launchctl output alone.
-function writeBridgeStatus(status, { now = () => Date.now(), ...options } = {}) {
-  writeJsonFile(resolveBridgeStatusPath(options), {
-    ...status,
-    updatedAt: new Date(now()).toISOString(),
-  }, options);
+function writeBridgeStatus(
+  status,
+  { now = () => Date.now(), ...options } = {},
+) {
+  writeJsonFile(
+    resolveBridgeStatusPath(options),
+    {
+      ...status,
+      updatedAt: new Date(now()).toISOString(),
+    },
+    options,
+  );
 }
 
 function readBridgeStatus(options = {}) {

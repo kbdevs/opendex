@@ -1,5 +1,5 @@
 // FILE: codex-desktop-refresher.js
-// Purpose: Debounced Mac desktop refresh controller for Codex.app after phone-authored conversation changes.
+// Purpose: Debounced Mac desktop refresh controller after phone-authored conversation changes.
 // Layer: CLI helper
 // Exports: CodexDesktopRefresher, readBridgeConfig
 // Depends on: child_process, path, ./rollout-watch
@@ -17,7 +17,11 @@ const DEFAULT_MID_RUN_REFRESH_THROTTLE_MS = 3_000;
 const DEFAULT_ROLLOUT_LOOKUP_TIMEOUT_MS = 5_000;
 const DEFAULT_ROLLOUT_IDLE_TIMEOUT_MS = 10_000;
 const DEFAULT_CUSTOM_REFRESH_FAILURE_THRESHOLD = 3;
-const REFRESH_SCRIPT_PATH = path.join(__dirname, "scripts", "codex-refresh.applescript");
+const REFRESH_SCRIPT_PATH = path.join(
+  __dirname,
+  "scripts",
+  "codex-refresh.applescript",
+);
 const NEW_THREAD_DEEP_LINK = "codex://threads/new";
 
 class CodexDesktopRefresher {
@@ -27,7 +31,7 @@ class CodexDesktopRefresher {
     refreshCommand = "",
     bundleId = DEFAULT_BUNDLE_ID,
     appPath = DEFAULT_APP_PATH,
-    logPrefix = "[remodex]",
+    logPrefix = "[opendex]",
     fallbackNewThreadMs = DEFAULT_FALLBACK_NEW_THREAD_MS,
     midRunRefreshThrottleMs = DEFAULT_MID_RUN_REFRESH_THROTTLE_MS,
     rolloutLookupTimeoutMs = DEFAULT_ROLLOUT_LOOKUP_TIMEOUT_MS,
@@ -51,8 +55,13 @@ class CodexDesktopRefresher {
     this.now = now;
     this.refreshExecutor = refreshExecutor;
     this.watchThreadRolloutFactory = watchThreadRolloutFactory;
-    this.refreshBackend = refreshBackend
-      || (this.refreshCommand ? "command" : (this.refreshExecutor ? "command" : "applescript"));
+    this.refreshBackend =
+      refreshBackend ||
+      (this.refreshCommand
+        ? "command"
+        : this.refreshExecutor
+          ? "command"
+          : "applescript");
     this.customRefreshFailureThreshold = customRefreshFailureThreshold;
 
     this.mode = "idle";
@@ -127,12 +136,14 @@ class CodexDesktopRefresher {
       this.clearFallbackTimer();
       const turnId = extractTurnId(parsed);
       if (turnId && turnId === this.lastTurnIdRefreshed) {
-        this.log(`refresh skipped (debounced): completion already refreshed for ${turnId}`);
+        this.log(
+          `refresh skipped (debounced): completion already refreshed for ${turnId}`,
+        );
         return;
       }
 
       const target = resolveOutboundTarget(method, parsed);
-      this.queueCompletionRefresh(target, turnId, `codex ${method}`);
+      this.queueCompletionRefresh(target, turnId, `runtime ${method}`);
       return;
     }
 
@@ -140,7 +151,7 @@ class CodexDesktopRefresher {
       const target = resolveOutboundTarget(method, parsed);
       this.pendingNewThread = false;
       this.clearFallbackTimer();
-      this.queueRefresh("phone", target, `codex ${method}`);
+      this.queueRefresh("phone", target, `runtime ${method}`);
       if (target?.threadId) {
         this.mode = "watching_thread";
         this.ensureWatcher(target.threadId);
@@ -231,7 +242,9 @@ class CodexDesktopRefresher {
     }
 
     if (this.refreshRunning) {
-      this.log("refresh skipped (debounced): another refresh is already running");
+      this.log(
+        "refresh skipped (debounced): another refresh is already running",
+      );
       return;
     }
 
@@ -240,7 +253,9 @@ class CodexDesktopRefresher {
       ? new Set(["completion"])
       : new Set(this.pendingRefreshKinds);
     const completionTurnId = this.pendingCompletionTurnId;
-    const targetUrl = isCompletionRun ? this.pendingCompletionTargetUrl : this.pendingTargetUrl;
+    const targetUrl = isCompletionRun
+      ? this.pendingCompletionTargetUrl
+      : this.pendingTargetUrl;
     const targetThreadId = isCompletionRun
       ? this.pendingCompletionTargetThreadId
       : this.pendingTargetThreadId;
@@ -260,16 +275,16 @@ class CodexDesktopRefresher {
     }
     this.refreshRunning = true;
     this.log(
-      `refresh running: ${Array.from(pendingRefreshKinds).join("+")}${targetThreadId ? ` thread=${targetThreadId}` : ""}`
+      `refresh running: ${Array.from(pendingRefreshKinds).join("+")}${targetThreadId ? ` thread=${targetThreadId}` : ""}`,
     );
 
     let didRefresh = false;
     try {
       const refreshSignature = `${targetUrl || "app"}|${targetThreadId || "no-thread"}`;
       if (
-        !shouldForceCompletionRefresh
-        && refreshSignature === this.lastRefreshSignature
-        && this.now() - this.lastRefreshAt < this.debounceMs
+        !shouldForceCompletionRefresh &&
+        refreshSignature === this.lastRefreshSignature &&
+        this.now() - this.lastRefreshAt < this.debounceMs
       ) {
         this.log(`refresh skipped (duplicate target): ${refreshSignature}`);
       } else {
@@ -287,9 +302,9 @@ class CodexDesktopRefresher {
     } finally {
       this.refreshRunning = false;
       if (
-        didRefresh
-        && stopWatcherAfterRefreshThreadId
-        && stopWatcherAfterRefreshThreadId === this.activeWatchedThreadId
+        didRefresh &&
+        stopWatcherAfterRefreshThreadId &&
+        stopWatcherAfterRefreshThreadId === this.activeWatchedThreadId
       ) {
         this.stopWatcher();
         this.mode = this.pendingNewThread ? "pending_new_thread" : "idle";
@@ -436,10 +451,14 @@ class CodexDesktopRefresher {
     });
 
     if (event.reason === "materialized") {
-      this.queueRefresh("rollout_materialized", {
-        threadId: event.threadId,
-        url: buildThreadDeepLink(event.threadId),
-      }, `rollout ${event.reason}`);
+      this.queueRefresh(
+        "rollout_materialized",
+        {
+          threadId: event.threadId,
+          url: buildThreadDeepLink(event.threadId),
+        },
+        `rollout ${event.reason}`,
+      );
       return;
     }
 
@@ -448,10 +467,14 @@ class CodexDesktopRefresher {
     }
 
     if (previousSize == null) {
-      this.queueRefresh("rollout_growth", {
-        threadId: event.threadId,
-        url: buildThreadDeepLink(event.threadId),
-      }, "rollout first-growth");
+      this.queueRefresh(
+        "rollout_growth",
+        {
+          threadId: event.threadId,
+          url: buildThreadDeepLink(event.threadId),
+        },
+        "rollout first-growth",
+      );
       this.lastMidRunRefreshAt = this.now();
       return;
     }
@@ -461,10 +484,14 @@ class CodexDesktopRefresher {
     }
 
     this.lastMidRunRefreshAt = this.now();
-    this.queueRefresh("rollout_growth", {
-      threadId: event.threadId,
-      url: buildThreadDeepLink(event.threadId),
-    }, "rollout mid-run");
+    this.queueRefresh(
+      "rollout_growth",
+      {
+        threadId: event.threadId,
+        url: buildThreadDeepLink(event.threadId),
+      },
+      "rollout mid-run",
+    );
   }
 
   log(message) {
@@ -475,14 +502,19 @@ class CodexDesktopRefresher {
     const message = extractErrorMessage(error);
     console.error(`${this.logPrefix} refresh failed: ${message}`);
 
-    if (this.refreshBackend === "applescript" && isDesktopUnavailableError(message)) {
+    if (
+      this.refreshBackend === "applescript" &&
+      isDesktopUnavailableError(message)
+    ) {
       this.disableRuntimeRefresh("desktop refresh unavailable on this Mac");
       return;
     }
 
     if (this.refreshBackend === "command") {
       this.consecutiveRefreshFailures += 1;
-      if (this.consecutiveRefreshFailures >= this.customRefreshFailureThreshold) {
+      if (
+        this.consecutiveRefreshFailures >= this.customRefreshFailureThreshold
+      ) {
         this.disableRuntimeRefresh("custom refresh command kept failing");
       }
     }
@@ -501,7 +533,9 @@ class CodexDesktopRefresher {
     this.mode = "idle";
 
     if (!this.unavailableLogged) {
-      console.error(`${this.logPrefix} desktop refresh disabled until restart: ${reason}`);
+      console.error(
+        `${this.logPrefix} desktop refresh disabled until restart: ${reason}`,
+      );
       this.unavailableLogged = true;
     }
   }
@@ -524,57 +558,94 @@ function readBridgeConfig({
 } = {}) {
   const privateDefaults = readPrivatePackageDefaults({ runtimeRoot, fsImpl });
   const sourceCheckout = isSourceCheckout(runtimeRoot, fsImpl);
-  const defaultRelayUrl = sourceCheckout
-    ? ""
-    : privateDefaults.relayUrl;
+  const defaultRelayUrl = sourceCheckout ? "" : privateDefaults.relayUrl;
   const explicitRelayUrl = readFirstDefinedEnv(
-    ["REMODEX_RELAY", "PHODEX_RELAY"],
+    ["OPENDEX_RELAY", "REMODEX_RELAY", "PHODEX_RELAY"],
     "",
-    env
+    env,
   );
   const relayUrl = readFirstDefinedEnv(
-    ["REMODEX_RELAY", "PHODEX_RELAY"],
+    ["OPENDEX_RELAY", "REMODEX_RELAY", "PHODEX_RELAY"],
     defaultRelayUrl,
-    env
+    env,
   );
-  const defaultPushServiceUrl = sourceCheckout || explicitRelayUrl
-    ? ""
-    : privateDefaults.pushServiceUrl;
+  const defaultPushServiceUrl =
+    sourceCheckout || explicitRelayUrl ? "" : privateDefaults.pushServiceUrl;
   const codexEndpoint = readFirstDefinedEnv(
-    ["REMODEX_CODEX_ENDPOINT", "PHODEX_CODEX_ENDPOINT"],
+    [
+      "OPENDEX_OPENCODE_ENDPOINT",
+      "REMODEX_OPENCODE_ENDPOINT",
+      "PHODEX_OPENCODE_ENDPOINT",
+      "OPENCODE_ENDPOINT",
+      "OPENDEX_CODEX_ENDPOINT",
+      "REMODEX_CODEX_ENDPOINT",
+      "PHODEX_CODEX_ENDPOINT",
+    ],
     "",
-    env
+    env,
   );
   const refreshCommand = readFirstDefinedEnv(
-    ["REMODEX_REFRESH_COMMAND", "PHODEX_ON_PHONE_MESSAGE"],
+    [
+      "OPENDEX_REFRESH_COMMAND",
+      "REMODEX_REFRESH_COMMAND",
+      "PHODEX_ON_PHONE_MESSAGE",
+    ],
     "",
-    env
+    env,
   );
-  const explicitRefreshEnabled = readOptionalBooleanEnv(["REMODEX_REFRESH_ENABLED"], env);
-  // Desktop refresh is opt-in for now because Codex.app still lacks true live updates.
+  const explicitRefreshEnabled = readOptionalBooleanEnv(
+    ["OPENDEX_REFRESH_ENABLED", "REMODEX_REFRESH_ENABLED"],
+    env,
+  );
+  // Desktop refresh is opt-in for now because the desktop app still lacks true live updates.
   const defaultRefreshEnabled = false;
   return {
     relayUrl,
     pushServiceUrl: readFirstDefinedEnv(
-      ["REMODEX_PUSH_SERVICE_URL"],
+      ["OPENDEX_PUSH_SERVICE_URL", "REMODEX_PUSH_SERVICE_URL"],
       defaultPushServiceUrl,
-      env
+      env,
     ),
     pushPreviewMaxChars: parseIntegerEnv(
-      readFirstDefinedEnv(["REMODEX_PUSH_PREVIEW_MAX_CHARS"], "160", env),
-      160
+      readFirstDefinedEnv(
+        ["OPENDEX_PUSH_PREVIEW_MAX_CHARS", "REMODEX_PUSH_PREVIEW_MAX_CHARS"],
+        "160",
+        env,
+      ),
+      160,
     ),
-    refreshEnabled: explicitRefreshEnabled == null
-      ? defaultRefreshEnabled
-      : explicitRefreshEnabled,
+    refreshEnabled:
+      explicitRefreshEnabled == null
+        ? defaultRefreshEnabled
+        : explicitRefreshEnabled,
     refreshDebounceMs: parseIntegerEnv(
-      readFirstDefinedEnv(["REMODEX_REFRESH_DEBOUNCE_MS"], String(DEFAULT_DEBOUNCE_MS), env),
-      DEFAULT_DEBOUNCE_MS
+      readFirstDefinedEnv(
+        ["OPENDEX_REFRESH_DEBOUNCE_MS", "REMODEX_REFRESH_DEBOUNCE_MS"],
+        String(DEFAULT_DEBOUNCE_MS),
+        env,
+      ),
+      DEFAULT_DEBOUNCE_MS,
     ),
     codexEndpoint,
     refreshCommand,
-    codexBundleId: readFirstDefinedEnv(["REMODEX_CODEX_BUNDLE_ID"], DEFAULT_BUNDLE_ID, env),
-    codexAppPath: DEFAULT_APP_PATH,
+    codexBundleId: readFirstDefinedEnv(
+      [
+        "OPENDEX_DESKTOP_BUNDLE_ID",
+        "OPENDEX_CODEX_BUNDLE_ID",
+        "REMODEX_CODEX_BUNDLE_ID",
+      ],
+      DEFAULT_BUNDLE_ID,
+      env,
+    ),
+    codexAppPath: readFirstDefinedEnv(
+      [
+        "OPENDEX_DESKTOP_APP_PATH",
+        "OPENDEX_CODEX_APP_PATH",
+        "REMODEX_CODEX_APP_PATH",
+      ],
+      DEFAULT_APP_PATH,
+      env,
+    ),
   };
 }
 
@@ -604,8 +675,10 @@ function readPrivatePackageDefaults({ runtimeRoot, fsImpl }) {
 // Keeps repo checkouts local-first while published npm installs can stay ready-to-run.
 function isSourceCheckout(runtimeRoot, fsImpl) {
   const repoRoot = path.resolve(runtimeRoot, "..");
-  return path.basename(runtimeRoot) === "phodex-bridge"
-    && fsImpl.existsSync(path.join(repoRoot, ".git"));
+  return (
+    path.basename(runtimeRoot) === "phodex-bridge" &&
+    fsImpl.existsSync(path.join(repoRoot, ".git"))
+  );
 }
 
 function execFilePromise(command, args) {
@@ -644,7 +717,11 @@ function extractTurnId(message) {
     return params.turnId;
   }
 
-  if (params.turn && typeof params.turn === "object" && typeof params.turn.id === "string") {
+  if (
+    params.turn &&
+    typeof params.turn === "object" &&
+    typeof params.turn.id === "string"
+  ) {
     return params.turn.id;
   }
 
@@ -737,10 +814,10 @@ function parseIntegerEnv(value, fallback) {
 
 function extractErrorMessage(error) {
   return (
-    error?.stderr?.toString("utf8")
-    || error?.stdout?.toString("utf8")
-    || error?.message
-    || "unknown refresh error"
+    error?.stderr?.toString("utf8") ||
+    error?.stdout?.toString("utf8") ||
+    error?.message ||
+    "unknown refresh error"
   ).trim();
 }
 

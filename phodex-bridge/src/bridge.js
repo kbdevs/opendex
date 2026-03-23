@@ -1,5 +1,5 @@
 // FILE: bridge.js
-// Purpose: Runs Codex locally, bridges relay traffic, and coordinates desktop refreshes for Codex.app.
+// Purpose: Runs the local bridge, relays phone traffic, and coordinates desktop refreshes.
 // Layer: CLI service
 // Exports: startBridge
 // Depends on: ws, crypto, os, ./qr, ./codex-desktop-refresher, ./codex-transport, ./rollout-watch, ./voice-handler
@@ -26,8 +26,12 @@ const { createVoiceHandler, resolveVoiceAuth } = require("./voice-handler");
 const {
   composeSanitizedAuthStatusFromSettledResults,
 } = require("./account-status");
-const { createPushNotificationServiceClient } = require("./push-notification-service-client");
-const { createPushNotificationTracker } = require("./push-notification-tracker");
+const {
+  createPushNotificationServiceClient,
+} = require("./push-notification-service-client");
+const {
+  createPushNotificationTracker,
+} = require("./push-notification-tracker");
 const {
   loadOrCreateBridgeDeviceState,
   resolveBridgeRelaySession,
@@ -46,8 +50,10 @@ function startBridge({
   const config = explicitConfig || readBridgeConfig();
   const relayBaseUrl = config.relayUrl.replace(/\/+$/, "");
   if (!relayBaseUrl) {
-    console.error("[remodex] No relay URL configured.");
-    console.error("[remodex] In a source checkout, run ./run-local-remodex.sh or set REMODEX_RELAY.");
+    console.error("[opendex] No relay URL configured.");
+    console.error(
+      "[opendex] In a source checkout, run ./run-local-opendex.sh or set OPENDEX_RELAY.",
+    );
     process.exit(1);
   }
 
@@ -55,7 +61,9 @@ function startBridge({
   try {
     deviceState = loadOrCreateBridgeDeviceState();
   } catch (error) {
-    console.error(`[remodex] ${(error && error.message) || "Failed to load the saved bridge pairing state."}`);
+    console.error(
+      `[opendex] ${(error && error.message) || "Failed to load the saved bridge pairing state."}`,
+    );
     process.exit(1);
   }
   const relaySession = resolveBridgeRelaySession(deviceState);
@@ -84,7 +92,7 @@ function startBridge({
     previewMaxChars: config.pushPreviewMaxChars,
   });
 
-  // Keep the local Codex runtime alive across transient relay disconnects.
+  // Keep the local runtime alive across transient relay disconnects.
   let socket = null;
   let isShuttingDown = false;
   let reconnectAttempt = 0;
@@ -129,8 +137,8 @@ function startBridge({
   // already provides the authoritative live stream for resumed threads.
   const rolloutLiveMirror = !config.codexEndpoint
     ? createRolloutLiveMirrorController({
-      sendApplicationResponse,
-    })
+        sendApplicationResponse,
+      })
     : null;
   let contextUsageWatcher = null;
   let watchedContextUsageKey = null;
@@ -138,11 +146,11 @@ function startBridge({
   const codex = createCodexTransport({
     endpoint: config.codexEndpoint,
     env: process.env,
-    logPrefix: "[remodex]",
+    logPrefix: "[opendex]",
   });
   const voiceHandler = createVoiceHandler({
     sendCodexRequest,
-    logPrefix: "[remodex]",
+    logPrefix: "[opendex]",
   });
   publishBridgeStatus({
     state: "starting",
@@ -159,11 +167,15 @@ function startBridge({
       lastError: error.message,
     });
     if (config.codexEndpoint) {
-      console.error(`[remodex] Failed to connect to Codex endpoint: ${config.codexEndpoint}`);
+      console.error(
+        `[opendex] Failed to connect to runtime endpoint: ${config.codexEndpoint}`,
+      );
     } else {
-      console.error("[remodex] Failed to start `codex app-server`.");
-      console.error(`[remodex] Launch command: ${codex.describe()}`);
-      console.error("[remodex] Make sure the Codex CLI is installed and that the launcher works on this OS.");
+      console.error("[opendex] Failed to start the local runtime transport.");
+      console.error(`[opendex] Launch command: ${codex.describe()}`);
+      console.error(
+        "[opendex] Make sure the local runtime launcher is installed and that the command works on this OS.",
+      );
     }
     console.error(error.message);
     process.exit(1);
@@ -191,7 +203,7 @@ function startBridge({
       pid: process.pid,
       lastError: "",
     });
-    console.log(`[remodex] ${status}`);
+    console.log(`[opendex] ${status}`);
   }
 
   // Retries the relay socket while preserving the active Codex process and session id.
@@ -202,10 +214,14 @@ function startBridge({
 
     if (closeCode === 4000 || closeCode === 4001) {
       logConnectionStatus("disconnected");
-      shutdown(codex, () => socket, () => {
-        isShuttingDown = true;
-        clearReconnectTimer();
-      });
+      shutdown(
+        codex,
+        () => socket,
+        () => {
+          isShuttingDown = true;
+          clearReconnectTimer();
+        },
+      );
       return;
     }
 
@@ -248,16 +264,18 @@ function startBridge({
 
     nextSocket.on("message", (data) => {
       const message = typeof data === "string" ? data : data.toString("utf8");
-      if (secureTransport.handleIncomingWireMessage(message, {
-        sendControlMessage(controlMessage) {
-          if (nextSocket.readyState === WebSocket.OPEN) {
-            nextSocket.send(JSON.stringify(controlMessage));
-          }
-        },
-        onApplicationMessage(plaintextMessage) {
-          handleApplicationMessage(plaintextMessage);
-        },
-      })) {
+      if (
+        secureTransport.handleIncomingWireMessage(message, {
+          sendControlMessage(controlMessage) {
+            if (nextSocket.readyState === WebSocket.OPEN) {
+              nextSocket.send(JSON.stringify(controlMessage));
+            }
+          },
+          onApplicationMessage(plaintextMessage) {
+            handleApplicationMessage(plaintextMessage);
+          },
+        })
+      ) {
         return;
       }
     });
@@ -295,7 +313,10 @@ function startBridge({
     desktopRefresher.handleOutbound(message);
     pushNotificationTracker.handleOutbound(message);
     rememberThreadFromMessage("codex", message);
-    secureTransport.queueOutboundApplicationMessage(message, sendRelayWireMessage);
+    secureTransport.queueOutboundApplicationMessage(
+      message,
+      sendRelayWireMessage,
+    );
   });
 
   codex.onClose(() => {
@@ -311,28 +332,47 @@ function startBridge({
     stopContextUsageWatcher();
     rolloutLiveMirror?.stopAll();
     desktopRefresher.handleTransportReset();
-    failBridgeManagedCodexRequests(new Error("Codex transport closed before the bridge request completed."));
+    failBridgeManagedCodexRequests(
+      new Error("Codex transport closed before the bridge request completed."),
+    );
     forwardedRequestMethodsById.clear();
-    if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) {
+    if (
+      socket?.readyState === WebSocket.OPEN ||
+      socket?.readyState === WebSocket.CONNECTING
+    ) {
       socket.close();
     }
   });
 
-  process.on("SIGINT", () => shutdown(codex, () => socket, () => {
-    isShuttingDown = true;
-    clearReconnectTimer();
-  }));
-  process.on("SIGTERM", () => shutdown(codex, () => socket, () => {
-    isShuttingDown = true;
-    clearReconnectTimer();
-  }));
+  process.on("SIGINT", () =>
+    shutdown(
+      codex,
+      () => socket,
+      () => {
+        isShuttingDown = true;
+        clearReconnectTimer();
+      },
+    ),
+  );
+  process.on("SIGTERM", () =>
+    shutdown(
+      codex,
+      () => socket,
+      () => {
+        isShuttingDown = true;
+        clearReconnectTimer();
+      },
+    ),
+  );
 
   // Routes decrypted app payloads through the same bridge handlers as before.
   function handleApplicationMessage(rawMessage) {
     if (handleBridgeManagedHandshakeMessage(rawMessage)) {
       return;
     }
-    if (handleBridgeManagedAccountRequest(rawMessage, sendApplicationResponse)) {
+    if (
+      handleBridgeManagedAccountRequest(rawMessage, sendApplicationResponse)
+    ) {
       return;
     }
     if (voiceHandler.handleVoiceRequest(rawMessage, sendApplicationResponse)) {
@@ -344,13 +384,20 @@ function startBridge({
     if (handleWorkspaceRequest(rawMessage, sendApplicationResponse)) {
       return;
     }
-    if (notificationsHandler.handleNotificationsRequest(rawMessage, sendApplicationResponse)) {
+    if (
+      notificationsHandler.handleNotificationsRequest(
+        rawMessage,
+        sendApplicationResponse,
+      )
+    ) {
       return;
     }
-    if (handleDesktopRequest(rawMessage, sendApplicationResponse, {
-      bundleId: config.codexBundleId,
-      appPath: config.codexAppPath,
-    })) {
+    if (
+      handleDesktopRequest(rawMessage, sendApplicationResponse, {
+        bundleId: config.codexBundleId,
+        appPath: config.codexAppPath,
+      })
+    ) {
       return;
     }
     if (handleGitRequest(rawMessage, sendApplicationResponse)) {
@@ -365,7 +412,10 @@ function startBridge({
 
   // Encrypts bridge-generated responses instead of letting the relay see plaintext.
   function sendApplicationResponse(rawMessage) {
-    secureTransport.queueOutboundApplicationMessage(rawMessage, sendRelayWireMessage);
+    secureTransport.queueOutboundApplicationMessage(
+      rawMessage,
+      sendRelayWireMessage,
+    );
   }
 
   // ─── Bridge-owned auth snapshot ─────────────────────────────
@@ -380,11 +430,14 @@ function startBridge({
       return false;
     }
 
-    const method = typeof parsed?.method === "string" ? parsed.method.trim() : "";
-    if (method !== "account/status/read"
-      && method !== "getAuthStatus"
-      && method !== "account/login/openOnMac"
-      && method !== "voice/resolveAuth") {
+    const method =
+      typeof parsed?.method === "string" ? parsed.method.trim() : "";
+    if (
+      method !== "account/status/read" &&
+      method !== "getAuthStatus" &&
+      method !== "account/login/openOnMac" &&
+      method !== "voice/resolveAuth"
+    ) {
       return false;
     }
 
@@ -398,7 +451,9 @@ function startBridge({
       })
       .catch((error) => {
         if (shouldRespond) {
-          sendResponse(createJsonRpcErrorResponse(requestId, error, "auth_status_failed"));
+          sendResponse(
+            createJsonRpcErrorResponse(requestId, error, "auth_status_failed"),
+          );
         }
       });
 
@@ -434,12 +489,13 @@ function startBridge({
     ]);
 
     return composeSanitizedAuthStatusFromSettledResults({
-      accountReadResult: accountReadResult.status === "fulfilled"
-        ? {
-          status: "fulfilled",
-          value: normalizeAccountRead(accountReadResult.value),
-        }
-        : accountReadResult,
+      accountReadResult:
+        accountReadResult.status === "fulfilled"
+          ? {
+              status: "fulfilled",
+              value: normalizeAccountRead(accountReadResult.value),
+            }
+          : accountReadResult,
       authStatusResult,
       loginInFlight: Boolean(pendingAuthLogin.loginId),
     });
@@ -448,14 +504,18 @@ function startBridge({
   // Opens the ChatGPT sign-in URL in the default browser on the bridge Mac.
   async function openPendingAuthLoginOnMac(params) {
     if (process.platform !== "darwin") {
-      const error = new Error("Opening ChatGPT sign-in on the bridge is only supported on macOS.");
+      const error = new Error(
+        "Opening ChatGPT sign-in on the bridge is only supported on macOS.",
+      );
       error.errorCode = "unsupported_platform";
       throw error;
     }
 
     const authUrl = readString(params?.authUrl) || pendingAuthLogin.authUrl;
     if (!authUrl) {
-      const error = new Error("No pending ChatGPT sign-in URL is available on this bridge.");
+      const error = new Error(
+        "No pending ChatGPT sign-in URL is available on this bridge.",
+      );
       error.errorCode = "missing_auth_url";
       throw error;
     }
@@ -476,7 +536,10 @@ function startBridge({
     }
 
     return {
-      account: payload.account && typeof payload.account === "object" ? payload.account : null,
+      account:
+        payload.account && typeof payload.account === "object"
+          ? payload.account
+          : null,
       requiresOpenaiAuth: Boolean(payload.requiresOpenaiAuth),
     };
   }
@@ -486,7 +549,8 @@ function startBridge({
       id: requestId,
       error: {
         code: -32000,
-        message: error?.userMessage || error?.message || "Bridge request failed.",
+        message:
+          error?.userMessage || error?.message || "Bridge request failed.",
         data: {
           errorCode: error?.errorCode || defaultErrorCode,
         },
@@ -496,9 +560,14 @@ function startBridge({
 
   function rememberForwardedRequestMethod(rawMessage) {
     const parsed = safeParseJSON(rawMessage);
-    const method = typeof parsed?.method === "string" ? parsed.method.trim() : "";
+    const method =
+      typeof parsed?.method === "string" ? parsed.method.trim() : "";
     const requestId = parsed?.id;
-    if (!method || requestId == null || !trackedForwardedRequestMethods.has(method)) {
+    if (
+      !method ||
+      requestId == null ||
+      !trackedForwardedRequestMethods.has(method)
+    ) {
       return;
     }
 
@@ -514,7 +583,9 @@ function startBridge({
     const parsed = safeParseJSON(rawMessage);
     const responseId = parsed?.id;
     if (responseId != null) {
-      const trackedRequest = forwardedRequestMethodsById.get(String(responseId));
+      const trackedRequest = forwardedRequestMethodsById.get(
+        String(responseId),
+      );
       if (trackedRequest) {
         forwardedRequestMethodsById.delete(String(responseId));
         const requestMethod = trackedRequest.method;
@@ -533,14 +604,18 @@ function startBridge({
           return;
         }
 
-        if (requestMethod === "account/login/cancel" || requestMethod === "account/logout") {
+        if (
+          requestMethod === "account/login/cancel" ||
+          requestMethod === "account/logout"
+        ) {
           clearPendingAuthLogin();
           return;
         }
       }
     }
 
-    const method = typeof parsed?.method === "string" ? parsed.method.trim() : "";
+    const method =
+      typeof parsed?.method === "string" ? parsed.method.trim() : "";
     if (method === "account/login/completed") {
       clearPendingAuthLogin();
       return;
@@ -559,8 +634,14 @@ function startBridge({
   }
 
   function pruneExpiredForwardedRequestMethods(now = Date.now()) {
-    for (const [requestId, trackedRequest] of forwardedRequestMethodsById.entries()) {
-      if (!trackedRequest || (now - trackedRequest.createdAt) >= forwardedRequestMethodTTLms) {
+    for (const [
+      requestId,
+      trackedRequest,
+    ] of forwardedRequestMethodsById.entries()) {
+      if (
+        !trackedRequest ||
+        now - trackedRequest.createdAt >= forwardedRequestMethodTTLms
+      ) {
         forwardedRequestMethodsById.delete(requestId);
       }
     }
@@ -640,13 +721,15 @@ function startBridge({
       return;
     }
 
-    sendApplicationResponse(JSON.stringify({
-      method: "thread/tokenUsage/updated",
-      params: {
-        threadId,
-        usage,
-      },
-    }));
+    sendApplicationResponse(
+      JSON.stringify({
+        method: "thread/tokenUsage/updated",
+        params: {
+          threadId,
+          usage,
+        },
+      }),
+    );
   }
 
   // The spawned/shared Codex app-server stays warm across phone reconnects.
@@ -660,7 +743,8 @@ function startBridge({
       return false;
     }
 
-    const method = typeof parsed?.method === "string" ? parsed.method.trim() : "";
+    const method =
+      typeof parsed?.method === "string" ? parsed.method.trim() : "";
     if (!method) {
       return false;
     }
@@ -671,12 +755,14 @@ function startBridge({
         return false;
       }
 
-      sendApplicationResponse(JSON.stringify({
-        id: parsed.id,
-        result: {
-          bridgeManaged: true,
-        },
-      }));
+      sendApplicationResponse(
+        JSON.stringify({
+          id: parsed.id,
+          result: {
+            bridgeManaged: true,
+          },
+        }),
+      );
       return true;
     }
 
@@ -713,9 +799,10 @@ function startBridge({
       return;
     }
 
-    const errorMessage = typeof parsed?.error?.message === "string"
-      ? parsed.error.message.toLowerCase()
-      : "";
+    const errorMessage =
+      typeof parsed?.error?.message === "string"
+        ? parsed.error.message.toLowerCase()
+        : "";
     if (errorMessage.includes("already initialized")) {
       codexHandshakeState = "warm";
     }
@@ -778,7 +865,9 @@ function startBridge({
     clearTimeout(waiter.timeout);
 
     if (parsed.error) {
-      const error = new Error(parsed.error.message || `Codex request failed: ${waiter.method}`);
+      const error = new Error(
+        parsed.error.message || `Codex request failed: ${waiter.method}`,
+      );
       error.code = parsed.error.code;
       error.data = parsed.error.data;
       waiter.reject(error);
@@ -808,10 +897,12 @@ function startBridge({
       return;
     }
 
-    socket.send(JSON.stringify({
-      kind: "relayMacRegistration",
-      registration: buildMacRegistration(nextDeviceState),
-    }));
+    socket.send(
+      JSON.stringify({
+        kind: "relayMacRegistration",
+        registration: buildMacRegistration(nextDeviceState),
+      }),
+    );
   }
 }
 
@@ -831,10 +922,13 @@ function buildMacRegistrationHeaders(deviceState) {
 }
 
 function buildMacRegistration(deviceState) {
-  const trustedPhoneEntry = Object.entries(deviceState?.trustedPhones || {})[0] || null;
+  const trustedPhoneEntry =
+    Object.entries(deviceState?.trustedPhones || {})[0] || null;
   return {
     macDeviceId: normalizeNonEmptyString(deviceState?.macDeviceId),
-    macIdentityPublicKey: normalizeNonEmptyString(deviceState?.macIdentityPublicKey),
+    macIdentityPublicKey: normalizeNonEmptyString(
+      deviceState?.macIdentityPublicKey,
+    ),
     displayName: normalizeNonEmptyString(os.hostname()),
     trustedPhoneDeviceId: normalizeNonEmptyString(trustedPhoneEntry?.[0]),
     trustedPhonePublicKey: normalizeNonEmptyString(trustedPhoneEntry?.[1]),
@@ -845,7 +939,10 @@ function shutdown(codex, getSocket, beforeExit = () => {}) {
   beforeExit();
 
   const socket = getSocket();
-  if (socket?.readyState === WebSocket.OPEN || socket?.readyState === WebSocket.CONNECTING) {
+  if (
+    socket?.readyState === WebSocket.OPEN ||
+    socket?.readyState === WebSocket.CONNECTING
+  ) {
     socket.close();
   }
 
@@ -879,36 +976,35 @@ function shouldStartContextUsageWatcher(context) {
     return false;
   }
 
-  return context.method === "turn/start"
-    || context.method === "turn/started";
+  return context.method === "turn/start" || context.method === "turn/started";
 }
 
 function extractThreadId(method, params) {
   if (method === "turn/start" || method === "turn/started") {
     return (
-      readString(params?.threadId)
-      || readString(params?.thread_id)
-      || readString(params?.turn?.threadId)
-      || readString(params?.turn?.thread_id)
+      readString(params?.threadId) ||
+      readString(params?.thread_id) ||
+      readString(params?.turn?.threadId) ||
+      readString(params?.turn?.thread_id)
     );
   }
 
   if (method === "thread/start" || method === "thread/started") {
     return (
-      readString(params?.threadId)
-      || readString(params?.thread_id)
-      || readString(params?.thread?.id)
-      || readString(params?.thread?.threadId)
-      || readString(params?.thread?.thread_id)
+      readString(params?.threadId) ||
+      readString(params?.thread_id) ||
+      readString(params?.thread?.id) ||
+      readString(params?.thread?.threadId) ||
+      readString(params?.thread?.thread_id)
     );
   }
 
   if (method === "turn/completed") {
     return (
-      readString(params?.threadId)
-      || readString(params?.thread_id)
-      || readString(params?.turn?.threadId)
-      || readString(params?.turn?.thread_id)
+      readString(params?.threadId) ||
+      readString(params?.thread_id) ||
+      readString(params?.turn?.threadId) ||
+      readString(params?.turn?.thread_id)
     );
   }
 
@@ -918,12 +1014,12 @@ function extractThreadId(method, params) {
 function extractTurnId(method, params) {
   if (method === "turn/started" || method === "turn/completed") {
     return (
-      readString(params?.turnId)
-      || readString(params?.turn_id)
-      || readString(params?.id)
-      || readString(params?.turn?.id)
-      || readString(params?.turn?.turnId)
-      || readString(params?.turn?.turn_id)
+      readString(params?.turnId) ||
+      readString(params?.turn_id) ||
+      readString(params?.id) ||
+      readString(params?.turn?.id) ||
+      readString(params?.turn?.turnId) ||
+      readString(params?.turn?.turn_id)
     );
   }
 

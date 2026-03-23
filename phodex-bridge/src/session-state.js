@@ -1,5 +1,5 @@
 // FILE: session-state.js
-// Purpose: Persists the latest active Remodex thread so the user can reopen it on the Mac for handoff.
+// Purpose: Persists the latest active thread so the user can reopen it on the Mac for handoff.
 // Layer: CLI helper
 // Exports: rememberActiveThread, openLastActiveThread, readLastActiveThread
 // Depends on: fs, os, path, child_process
@@ -9,9 +9,23 @@ const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
 
-const STATE_DIR = path.join(os.homedir(), ".remodex");
-const STATE_FILE = path.join(STATE_DIR, "last-thread.json");
+const DEFAULT_STATE_DIR = path.join(os.homedir(), ".opendex");
+const LEGACY_STATE_DIR = path.join(os.homedir(), ".remodex");
 const DEFAULT_BUNDLE_ID = "com.openai.codex";
+
+function resolveStateDir() {
+  if (fs.existsSync(DEFAULT_STATE_DIR)) {
+    return DEFAULT_STATE_DIR;
+  }
+  if (fs.existsSync(LEGACY_STATE_DIR)) {
+    return LEGACY_STATE_DIR;
+  }
+  return DEFAULT_STATE_DIR;
+}
+
+function resolveStateFile() {
+  return path.join(resolveStateDir(), "last-thread.json");
+}
 
 function rememberActiveThread(threadId, source) {
   if (!threadId || typeof threadId !== "string") {
@@ -24,8 +38,12 @@ function rememberActiveThread(threadId, source) {
     updatedAt: new Date().toISOString(),
   };
 
-  fs.mkdirSync(STATE_DIR, { recursive: true });
-  fs.writeFileSync(STATE_FILE, JSON.stringify(payload, null, 2));
+  const stateDir = resolveStateDir();
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(stateDir, "last-thread.json"),
+    JSON.stringify(payload, null, 2),
+  );
   return true;
 }
 
@@ -33,7 +51,7 @@ function openLastActiveThread({ bundleId = DEFAULT_BUNDLE_ID } = {}) {
   const state = readState();
   const threadId = state?.threadId;
   if (!threadId) {
-    throw new Error("No remembered Remodex thread found yet.");
+    throw new Error("No remembered Opendex thread found yet.");
   }
 
   const targetUrl = `codex://threads/${threadId}`;
@@ -42,11 +60,12 @@ function openLastActiveThread({ bundleId = DEFAULT_BUNDLE_ID } = {}) {
 }
 
 function readState() {
-  if (!fs.existsSync(STATE_FILE)) {
+  const stateFile = resolveStateFile();
+  if (!fs.existsSync(stateFile)) {
     return null;
   }
 
-  const raw = fs.readFileSync(STATE_FILE, "utf8");
+  const raw = fs.readFileSync(stateFile, "utf8");
   return JSON.parse(raw);
 }
 

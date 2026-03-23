@@ -10,7 +10,16 @@ const { execFileSync } = require("child_process");
 const path = require("path");
 const { version } = require("../package.json");
 
-test("remodex --version prints the package version", () => {
+test("opendex --version prints the package version", () => {
+  const cliPath = path.join(__dirname, "..", "bin", "opendex.js");
+  const output = execFileSync(process.execPath, [cliPath, "--version"], {
+    encoding: "utf8",
+  }).trim();
+
+  assert.equal(output, version);
+});
+
+test("legacy remodex --version wrapper still prints the package version", () => {
   const cliPath = path.join(__dirname, "..", "bin", "remodex.js");
   const output = execFileSync(process.execPath, [cliPath, "--version"], {
     encoding: "utf8",

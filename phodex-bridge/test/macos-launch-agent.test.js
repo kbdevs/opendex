@@ -24,7 +24,7 @@ const {
   writePairingSession,
 } = require("../src/daemon-state");
 
-test("buildLaunchAgentPlist points launchd at run-service with remodex state paths", () => {
+test("buildLaunchAgentPlist points launchd at run-service with opendex state paths", () => {
   const plist = buildLaunchAgentPlist({
     homeDir: "/Users/tester",
     pathEnv: "/usr/local/bin:/usr/bin",
@@ -35,9 +35,13 @@ test("buildLaunchAgentPlist points launchd at run-service with remodex state pat
     cliPath: "/tmp/remodex/bin/remodex.js",
   });
 
-  assert.match(plist, /<string>com\.remodex\.bridge<\/string>/);
+  assert.match(plist, /<string>com\.opendex\.bridge<\/string>/);
   assert.match(plist, /<string>run-service<\/string>/);
-  assert.match(plist, /<key>KeepAlive<\/key>\s*<dict>\s*<key>SuccessfulExit<\/key>\s*<false\/>\s*<\/dict>/);
+  assert.match(
+    plist,
+    /<key>KeepAlive<\/key>\s*<dict>\s*<key>SuccessfulExit<\/key>\s*<false\/>\s*<\/dict>/,
+  );
+  assert.match(plist, /<key>OPENDEX_DEVICE_STATE_DIR<\/key>/);
   assert.match(plist, /<key>REMODEX_DEVICE_STATE_DIR<\/key>/);
 });
 
@@ -47,7 +51,12 @@ test("resolveLaunchAgentPlistPath writes into the user's LaunchAgents folder", (
       env: { HOME: "/Users/tester" },
       osImpl: { homedir: () => "/Users/fallback" },
     }),
-    path.join("/Users/tester", "Library", "LaunchAgents", "com.remodex.bridge.plist")
+    path.join(
+      "/Users/tester",
+      "Library",
+      "LaunchAgents",
+      "com.opendex.bridge.plist",
+    ),
   );
 });
 
@@ -92,16 +101,15 @@ test("stopMacOSBridgeService falls back to label bootout when plist bootout fail
         [
           "bootout",
           `gui/${process.getuid()}`,
-          path.join(process.env.HOME, "Library", "LaunchAgents", "com.remodex.bridge.plist"),
+          path.join(
+            process.env.HOME,
+            "Library",
+            "LaunchAgents",
+            "com.opendex.bridge.plist",
+          ),
         ],
       ],
-      [
-        "launchctl",
-        [
-          "bootout",
-          `gui/${process.getuid()}/com.remodex.bridge`,
-        ],
-      ],
+      ["launchctl", ["bootout", `gui/${process.getuid()}/com.opendex.bridge`]],
     ]);
   });
 });
@@ -148,7 +156,10 @@ test("runMacOSBridgeService records a clean error state instead of throwing when
     assert.equal(status?.state, "error");
     assert.equal(status?.connectionStatus, "error");
     assert.equal(status?.pid, process.pid);
-    assert.equal(status?.lastError, "No relay URL configured for the macOS bridge service.");
+    assert.equal(
+      status?.lastError,
+      "No relay URL configured for the macOS bridge service.",
+    );
     assert.equal(typeof status?.updatedAt, "string");
   });
 });
@@ -156,9 +167,17 @@ test("runMacOSBridgeService records a clean error state instead of throwing when
 test("getMacOSBridgeServiceStatus reports launchd + runtime metadata together", () => {
   withTempDaemonEnv(({ rootDir }) => {
     writePairingSession({ sessionId: "session-2" });
-    writeBridgeStatus({ state: "running", connectionStatus: "connected", pid: 55 });
+    writeBridgeStatus({
+      state: "running",
+      connectionStatus: "connected",
+      pid: 55,
+    });
 
-    const plistPath = path.join(rootDir, "LaunchAgents", "com.remodex.bridge.plist");
+    const plistPath = path.join(
+      rootDir,
+      "LaunchAgents",
+      "com.opendex.bridge.plist",
+    );
     fs.mkdirSync(path.dirname(plistPath), { recursive: true });
     fs.writeFileSync(plistPath, "plist");
 
@@ -180,7 +199,9 @@ test("getMacOSBridgeServiceStatus reports launchd + runtime metadata together", 
 function withTempDaemonEnv(run) {
   const previousDir = process.env.REMODEX_DEVICE_STATE_DIR;
   const previousHome = process.env.HOME;
-  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "remodex-launch-agent-"));
+  const rootDir = fs.mkdtempSync(
+    path.join(os.tmpdir(), "remodex-launch-agent-"),
+  );
   process.env.REMODEX_DEVICE_STATE_DIR = rootDir;
   process.env.HOME = rootDir;
 

@@ -1,8 +1,8 @@
 # Public Repo and Self-Hosting
 
-This file explains what the public Remodex repository is for, what it includes, and what it does not include.
+This file explains what the public Opendex repository is for, what it includes, and what it does not include.
 
-If you cloned Remodex from GitHub, the intended path is local-first usage or self-hosting on infrastructure you control.
+If you cloned Opendex from GitHub, the intended path is local-first usage or self-hosting on infrastructure you control.
 
 ## What the Public Repo Includes
 
@@ -21,7 +21,7 @@ The public repository does not include:
 
 - a private production relay URL
 - private App Store build defaults
-- private npm publish-time defaults
+- private publish-time defaults
 - private notification credentials
 - private deployment secrets
 
@@ -33,12 +33,12 @@ The public repo now also includes the trusted-Mac reconnect flow, but the built-
 
 If you use the public repo, you should expect one of these flows:
 
-1. Local LAN pairing on your own machine with `./run-local-remodex.sh`
-2. A self-hosted relay on your own VPS, passed in through `REMODEX_RELAY`
+1. Local LAN pairing on your own machine with `./run-local-opendex.sh`
+2. A self-hosted relay on your own VPS, passed in through `OPENDEX_RELAY`
 
 That means:
 
-- Codex still runs on your Mac
+- OpenCode still runs on your Mac
 - git commands still run on your Mac
 - the iPhone is still a paired remote client
 - the relay is only the transport layer
@@ -48,9 +48,9 @@ That means:
 For most GitHub users, the easiest first step is:
 
 ```sh
-git clone https://github.com/Emanuele-web04/remodex.git
-cd remodex
-./run-local-remodex.sh
+git clone https://github.com/kbdevs/opendex.git
+cd opendex
+./run-local-opendex.sh
 ```
 
 For the full public setup guide, read [Docs/self-hosting.md](Docs/self-hosting.md).
@@ -64,7 +64,7 @@ The public repo stays generic on purpose.
 That keeps the self-host path honest:
 
 - people can inspect the transport and pairing code
-- people can run Remodex locally
+- people can run Opendex locally
 - people can self-host their own relay
 - people are not silently tied to someone else's hosted infrastructure
 
@@ -81,7 +81,7 @@ That does not change the goal of the public repo:
 
 ## What to Keep Private
 
-If you fork or self-host Remodex, keep these things out of the public repo:
+If you fork or self-host Opendex, keep these things out of the public repo:
 
 - your deployed hostname
 - your VPS IP addresses
@@ -93,11 +93,11 @@ Those belong in your own environment, private config, or release pipeline.
 
 ## Short Version
 
-If you cloned Remodex from GitHub:
+If you cloned Opendex from GitHub:
 
 - do not expect a private hosted relay to be built in
-- use `./run-local-remodex.sh` for local testing
-- use `REMODEX_RELAY` for your own VPS or hosted relay
+- use `./run-local-opendex.sh` for local testing
+- use `OPENDEX_RELAY` for your own VPS or hosted relay
 - use QR once to trust the Mac, then let reconnect reuse that trust
 - remember that the built-in daemon/background service path is currently macOS-only
 - treat the public repo as the self-hostable version of the project

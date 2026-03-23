@@ -1,6 +1,6 @@
-# Self-Hosting Remodex
+# Self-Hosting Opendex
 
-This guide is for developers who clone the public GitHub repository and want to run Remodex on infrastructure they control.
+This guide is for developers who clone the public GitHub repository and want to run Opendex on infrastructure they control.
 
 It covers two supported setups:
 
@@ -12,24 +12,24 @@ This document intentionally avoids any private hosted-service details. If you ar
 The public source tree is local-first and self-host friendly:
 
 - there is no public production relay baked into the GitHub source
-- local pairing should work out of the box with `./run-local-remodex.sh`
-- internet-facing setups should pass their own relay URL explicitly with `REMODEX_RELAY`
+- local pairing should work out of the box with `./run-local-opendex.sh`
+- internet-facing setups should pass their own relay URL explicitly with `OPENDEX_RELAY`
 - the first QR scan bootstraps trust, then later reconnects can reuse the same trusted Mac through that relay
 - the built-in background daemon for trusted reconnect is currently macOS-only
 
-## What Remodex Self-Hosting Means
+## What Opendex Self-Hosting Means
 
-Remodex is local-first.
+Opendex is local-first.
 
 That means:
 
 - the bridge runs on your own Mac
-- Codex runs on your own Mac
+- OpenCode runs on your own Mac
 - git commands run on your own Mac
 - your iPhone is a remote control
 - the relay is only a transport layer for pairing, trusted-session resolve, and encrypted message forwarding
 
-The relay does not run Codex and does not get your plaintext application payloads after the secure handshake completes.
+The relay does not run OpenCode and does not get your plaintext application payloads after the secure handshake completes.
 
 ## Option 1: Local LAN Setup
 
@@ -37,8 +37,8 @@ This is the easiest way to try the public repo, but on iPhone it should be treat
 
 ### What you need
 
-- a Mac with Codex CLI installed
-- an iPhone with a Remodex build installed
+- a Mac with OpenCode CLI installed
+- an iPhone with an Opendex build installed
 - both devices on the same local network
 
 ### Start everything locally
@@ -46,15 +46,15 @@ This is the easiest way to try the public repo, but on iPhone it should be treat
 From the repo root:
 
 ```sh
-git clone https://github.com/Emanuele-web04/remodex.git
-cd remodex
-./run-local-remodex.sh
+git clone https://github.com/kbdevs/opendex.git
+cd opendex
+./run-local-opendex.sh
 ```
 
 What this does:
 
 - starts a local relay on your machine
-- starts the Remodex bridge
+- starts the Opendex bridge
 - prints a pairing QR code for first-time trust bootstrap or recovery
 
 Then:
@@ -69,7 +69,7 @@ Then:
 Pass a hostname or IP address that the phone can actually reach:
 
 ```sh
-./run-local-remodex.sh --hostname 192.168.1.10
+./run-local-opendex.sh --hostname 192.168.1.10
 ```
 
 ### Health check
@@ -85,7 +85,7 @@ curl http://127.0.0.1:9000/health
 You should get:
 
 ```json
-{"ok":true}
+{ "ok": true }
 ```
 
 ## Option 2: Self-Hosted VPS Relay
@@ -98,26 +98,26 @@ This is also the best base for a Tailscale setup: the relay can live on a Mac, a
 
 On your VPS:
 
-- the Remodex relay
+- the Opendex relay
 
 On your Mac:
 
-- the Remodex bridge
-- Codex CLI / `codex app-server`
+- the Opendex bridge
+- OpenCode CLI / local OpenCode server
 
 On your iPhone:
 
-- the Remodex app
+- the Opendex app
 
 ### Start the relay on the VPS
 
 From the public repo:
 
 ```sh
-git clone https://github.com/Emanuele-web04/remodex.git
-cd remodex/relay
-npm install
-npm start
+git clone https://github.com/kbdevs/opendex.git
+cd opendex/relay
+bun install
+bun start
 ```
 
 By default the relay listens on port `9000`.
@@ -133,7 +133,7 @@ curl http://127.0.0.1:9000/health
 You should get:
 
 ```json
-{"ok":true}
+{ "ok": true }
 ```
 
 ### Put a reverse proxy in front of it
@@ -143,7 +143,7 @@ Expose the relay through a public `ws://` or `wss://` endpoint that forwards to 
 Two common patterns are:
 
 - a dedicated subdomain, for example `wss://relay.example.com/relay`
-- a shared-domain subpath, for example `wss://api.example.com/remodex/relay`
+- a shared-domain subpath, for example `wss://api.example.com/opendex/relay`
 
 If you use a shared-domain subpath, make sure your reverse proxy strips the prefix before forwarding so the Node process still receives `/relay/...`.
 
@@ -152,15 +152,15 @@ If you use a shared-domain subpath, make sure your reverse proxy strips the pref
 On the Mac that runs the bridge:
 
 ```sh
-REMODEX_RELAY="wss://relay.example.com/relay" remodex up
+OPENDEX_RELAY="wss://relay.example.com/relay" opendex up
 ```
 
 Or, if you are running from source:
 
 ```sh
 cd phodex-bridge
-npm install
-REMODEX_RELAY="wss://relay.example.com/relay" npm start
+bun install
+OPENDEX_RELAY="wss://relay.example.com/relay" bun start
 ```
 
 The bridge will print a QR code the first time you trust that Mac, or later if you intentionally reset trust.
@@ -176,7 +176,7 @@ After the first successful scan:
 
 Today, that background-service path is built in for macOS. If you self-host against a non-macOS bridge, pairing and relay routing still work, but you must manage persistence/background service behavior yourself.
 
-If you install the bridge from npm and do not use the local launcher, make sure you export `REMODEX_RELAY` before running `remodex up`.
+If you install the bridge globally and do not use the local launcher, make sure you export `OPENDEX_RELAY` before running `opendex up`.
 
 ## Push Notifications
 
@@ -184,13 +184,13 @@ Managed push is optional.
 
 For public self-hosting:
 
-- you do not need push to use Remodex
+- you do not need push to use Opendex
 - local in-app and local-device flows can still work without it
 - the relay keeps push endpoints disabled by default
 
 Do not turn push on unless you are also ready to configure:
 
-- a bridge-side `REMODEX_PUSH_SERVICE_URL`
+- a bridge-side `OPENDEX_PUSH_SERVICE_URL`
 - APNs credentials on the relay side
 - your own operational setup for notification delivery
 
@@ -202,7 +202,7 @@ If your relay sits behind Traefik, Nginx, or Caddy:
 
 - forward WebSocket upgrades correctly
 - forward the `/relay/...` path to the relay process
-- only enable `REMODEX_TRUST_PROXY=true` when the proxy is trusted and sanitizes forwarded IP headers
+- only enable `OPENDEX_TRUST_PROXY=true` when the proxy is trusted and sanitizes forwarded IP headers
 
 ## What Not to Commit
 
@@ -223,7 +223,7 @@ Check:
 
 - the relay is reachable from the phone
 - your reverse proxy forwards WebSockets
-- the bridge is using the correct `REMODEX_RELAY`
+- the bridge is using the correct `OPENDEX_RELAY`
 - the public endpoint uses `wss://` if you are going over the internet
 
 ### Local LAN pairing fails
@@ -231,7 +231,7 @@ Check:
 Try a concrete LAN IP:
 
 ```sh
-./run-local-remodex.sh --hostname 192.168.1.10
+./run-local-opendex.sh --hostname 192.168.1.10
 ```
 
 If local LAN pairing still fails on iPhone even though the relay health check works, prefer a Tailscale-reachable relay instead of continuing to rely on plain `ws://` over the same Wi-Fi.
@@ -250,7 +250,7 @@ If you cloned the public repo, the supported self-hosting story is:
 
 - run the relay yourself
 - prefer a relay path reachable from iPhone over Tailscale or another stable private network
-- point the bridge at your relay with `REMODEX_RELAY`
+- point the bridge at your relay with `OPENDEX_RELAY`
 - scan the QR from the iPhone app once to trust the Mac
 - let reconnect reuse that trusted Mac over the same relay
 - remember that the built-in daemon path is currently macOS-only
