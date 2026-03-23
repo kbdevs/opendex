@@ -20,6 +20,20 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function waitForCondition(
+  predicate,
+  { timeoutMs = 100, intervalMs = 5 } = {},
+) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    if (predicate()) {
+      return;
+    }
+    await wait(intervalMs);
+  }
+  throw new Error("Timed out waiting for condition");
+}
+
 test("readBridgeConfig keeps safe defaults and explicit overrides", () => {
   const macConfig = readBridgeConfig({
     env: {},
@@ -110,7 +124,7 @@ test("readBridgeConfig uses only the packaged relay default outside a source che
   fs.writeFileSync(
     path.join(srcDir, "private-defaults.json"),
     JSON.stringify({ relayUrl: "wss://relay.example/relay" }),
-    "utf8"
+    "utf8",
   );
 
   const config = readBridgeConfig({
@@ -133,7 +147,7 @@ test("readBridgeConfig uses a packaged push default only when it is explicitly p
       relayUrl: "wss://relay.example/relay",
       pushServiceUrl: "https://relay.example",
     }),
-    "utf8"
+    "utf8",
   );
 
   const config = readBridgeConfig({
@@ -184,7 +198,7 @@ test("readBridgeConfig disables managed push defaults when a self-hosted relay o
   fs.writeFileSync(
     path.join(srcDir, "private-defaults.json"),
     JSON.stringify({ relayUrl: "wss://relay.example/remodex/relay" }),
-    "utf8"
+    "utf8",
   );
 
   const config = readBridgeConfig({
@@ -210,12 +224,14 @@ test("thread/start falls back once to the new-thread route when thread id is sti
     },
   });
 
-  refresher.handleInbound(JSON.stringify({
-    method: "thread/start",
-    params: {},
-  }));
+  refresher.handleInbound(
+    JSON.stringify({
+      method: "thread/start",
+      params: {},
+    }),
+  );
 
-  await wait(40);
+  await waitForCondition(() => refreshCalls.length === 1, { timeoutMs: 120 });
 
   assert.deepEqual(refreshCalls, ["codex://threads/new"]);
   refresher.handleTransportReset();
@@ -242,19 +258,23 @@ test("thread/started cancels the fallback and refreshes the concrete thread rout
     },
   });
 
-  refresher.handleInbound(JSON.stringify({
-    method: "thread/start",
-    params: {},
-  }));
+  refresher.handleInbound(
+    JSON.stringify({
+      method: "thread/start",
+      params: {},
+    }),
+  );
   await wait(10);
-  refresher.handleOutbound(JSON.stringify({
-    method: "thread/started",
-    params: {
-      thread: {
-        id: "thread-123",
+  refresher.handleOutbound(
+    JSON.stringify({
+      method: "thread/started",
+      params: {
+        thread: {
+          id: "thread-123",
+        },
       },
-    },
-  }));
+    }),
+  );
 
   await wait(25);
 
@@ -287,12 +307,14 @@ test("rollout growth refreshes are throttled during long runs", async () => {
     },
   });
 
-  refresher.handleInbound(JSON.stringify({
-    method: "turn/start",
-    params: {
-      threadId: "thread-456",
-    },
-  }));
+  refresher.handleInbound(
+    JSON.stringify({
+      method: "turn/start",
+      params: {
+        threadId: "thread-456",
+      },
+    }),
+  );
   await wait(10);
   refreshCalls.length = 0;
 
@@ -344,32 +366,38 @@ test("turn/completed bypasses duplicate-target dedupe and still stops the watche
     }),
   });
 
-  refresher.handleInbound(JSON.stringify({
-    method: "turn/start",
-    params: {
-      threadId: "thread-789",
-    },
-  }));
+  refresher.handleInbound(
+    JSON.stringify({
+      method: "turn/start",
+      params: {
+        threadId: "thread-789",
+      },
+    }),
+  );
   await wait(10);
 
   currentTime = 4_500;
-  refresher.handleOutbound(JSON.stringify({
-    method: "turn/completed",
-    params: {
-      threadId: "thread-789",
-      turnId: "turn-789",
-    },
-  }));
+  refresher.handleOutbound(
+    JSON.stringify({
+      method: "turn/completed",
+      params: {
+        threadId: "thread-789",
+        turnId: "turn-789",
+      },
+    }),
+  );
   await wait(10);
 
   currentTime = 4_700;
-  refresher.handleOutbound(JSON.stringify({
-    method: "turn/completed",
-    params: {
-      threadId: "thread-789",
-      turnId: "turn-789",
-    },
-  }));
+  refresher.handleOutbound(
+    JSON.stringify({
+      method: "turn/completed",
+      params: {
+        threadId: "thread-789",
+        turnId: "turn-789",
+      },
+    }),
+  );
   await wait(10);
 
   assert.deepEqual(refreshCalls, [
@@ -397,21 +425,25 @@ test("turn/completed is retried after a slow in-flight refresh finishes", async 
     watchThreadRolloutFactory: () => ({ stop() {} }),
   });
 
-  refresher.handleInbound(JSON.stringify({
-    method: "turn/start",
-    params: {
-      threadId: "thread-slow",
-    },
-  }));
+  refresher.handleInbound(
+    JSON.stringify({
+      method: "turn/start",
+      params: {
+        threadId: "thread-slow",
+      },
+    }),
+  );
   await wait(10);
 
-  refresher.handleOutbound(JSON.stringify({
-    method: "turn/completed",
-    params: {
-      threadId: "thread-slow",
-      turnId: "turn-slow",
-    },
-  }));
+  refresher.handleOutbound(
+    JSON.stringify({
+      method: "turn/completed",
+      params: {
+        threadId: "thread-slow",
+        turnId: "turn-slow",
+      },
+    }),
+  );
   await wait(10);
 
   assert.equal(refreshCalls.length, 1);
@@ -444,25 +476,31 @@ test("completion refresh keeps its own thread target even if another thread queu
     }),
   });
 
-  refresher.handleInbound(JSON.stringify({
-    method: "turn/start",
-    params: { threadId: "thread-a" },
-  }));
+  refresher.handleInbound(
+    JSON.stringify({
+      method: "turn/start",
+      params: { threadId: "thread-a" },
+    }),
+  );
   await wait(10);
   refreshCalls.length = 0;
   refresher.clearRefreshTimer();
 
-  refresher.handleOutbound(JSON.stringify({
-    method: "turn/completed",
-    params: {
-      threadId: "thread-a",
-      turnId: "turn-a",
-    },
-  }));
-  refresher.handleInbound(JSON.stringify({
-    method: "turn/start",
-    params: { threadId: "thread-b" },
-  }));
+  refresher.handleOutbound(
+    JSON.stringify({
+      method: "turn/completed",
+      params: {
+        threadId: "thread-a",
+        turnId: "turn-a",
+      },
+    }),
+  );
+  refresher.handleInbound(
+    JSON.stringify({
+      method: "turn/start",
+      params: { threadId: "thread-b" },
+    }),
+  );
   refresher.clearRefreshTimer();
   await refresher.runPendingRefresh();
   await refresher.runPendingRefresh();
@@ -491,12 +529,14 @@ test("handleTransportReset cancels pending refreshes and clears watcher state", 
     }),
   });
 
-  refresher.handleInbound(JSON.stringify({
-    method: "turn/start",
-    params: {
-      threadId: "thread-reset",
-    },
-  }));
+  refresher.handleInbound(
+    JSON.stringify({
+      method: "turn/start",
+      params: {
+        threadId: "thread-reset",
+      },
+    }),
+  );
   refresher.handleTransportReset();
   await wait(50);
 
@@ -518,19 +558,23 @@ test("handleTransportReset clears duplicate-target memory so the next refresh ca
     watchThreadRolloutFactory: () => ({ stop() {} }),
   });
 
-  refresher.handleInbound(JSON.stringify({
-    method: "turn/start",
-    params: { threadId: "thread-reset-dedupe" },
-  }));
+  refresher.handleInbound(
+    JSON.stringify({
+      method: "turn/start",
+      params: { threadId: "thread-reset-dedupe" },
+    }),
+  );
   await wait(10);
 
   refresher.handleTransportReset();
 
   currentTime = 5_100;
-  refresher.handleInbound(JSON.stringify({
-    method: "turn/start",
-    params: { threadId: "thread-reset-dedupe" },
-  }));
+  refresher.handleInbound(
+    JSON.stringify({
+      method: "turn/start",
+      params: { threadId: "thread-reset-dedupe" },
+    }),
+  );
   await wait(10);
 
   assert.deepEqual(refreshCalls, [
@@ -558,20 +602,24 @@ test("desktop refresh disables itself after a desktop-unavailable AppleScript fa
     }),
   });
 
-  refresher.handleInbound(JSON.stringify({
-    method: "turn/start",
-    params: {
-      threadId: "thread-disable-1",
-    },
-  }));
+  refresher.handleInbound(
+    JSON.stringify({
+      method: "turn/start",
+      params: {
+        threadId: "thread-disable-1",
+      },
+    }),
+  );
   await wait(10);
 
-  refresher.handleInbound(JSON.stringify({
-    method: "turn/start",
-    params: {
-      threadId: "thread-disable-2",
-    },
-  }));
+  refresher.handleInbound(
+    JSON.stringify({
+      method: "turn/start",
+      params: {
+        threadId: "thread-disable-2",
+      },
+    }),
+  );
   await wait(10);
 
   assert.equal(attempts, 1);
@@ -593,11 +641,18 @@ test("custom refresh commands only disable after repeated failures", async () =>
     },
   });
 
-  for (const threadId of ["thread-cmd-1", "thread-cmd-2", "thread-cmd-3", "thread-cmd-4"]) {
-    refresher.handleInbound(JSON.stringify({
-      method: "turn/start",
-      params: { threadId },
-    }));
+  for (const threadId of [
+    "thread-cmd-1",
+    "thread-cmd-2",
+    "thread-cmd-3",
+    "thread-cmd-4",
+  ]) {
+    refresher.handleInbound(
+      JSON.stringify({
+        method: "turn/start",
+        params: { threadId },
+      }),
+    );
     await wait(10);
   }
 
@@ -626,11 +681,13 @@ test("rollout watcher retries transient filesystem errors before succeeding", as
           throw error;
         }
 
-        return [{
-          name: "rollout-thread-watch-ok.jsonl",
-          isDirectory: () => false,
-          isFile: () => true,
-        }];
+        return [
+          {
+            name: "rollout-thread-watch-ok.jsonl",
+            isDirectory: () => false,
+            isFile: () => true,
+          },
+        ];
       },
       statSync: () => ({ size: 12, mtimeMs: Date.now() }),
       openSync: () => 1,

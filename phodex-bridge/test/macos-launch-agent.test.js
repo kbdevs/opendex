@@ -28,11 +28,11 @@ test("buildLaunchAgentPlist points launchd at run-service with opendex state pat
   const plist = buildLaunchAgentPlist({
     homeDir: "/Users/tester",
     pathEnv: "/usr/local/bin:/usr/bin",
-    stateDir: "/Users/tester/.remodex",
-    stdoutLogPath: "/Users/tester/.remodex/logs/bridge.stdout.log",
-    stderrLogPath: "/Users/tester/.remodex/logs/bridge.stderr.log",
+    stateDir: "/Users/tester/.opendex",
+    stdoutLogPath: "/Users/tester/.opendex/logs/bridge.stdout.log",
+    stderrLogPath: "/Users/tester/.opendex/logs/bridge.stderr.log",
     nodePath: "/usr/local/bin/node",
-    cliPath: "/tmp/remodex/bin/remodex.js",
+    cliPath: "/tmp/opendex/bin/opendex.js",
   });
 
   assert.match(plist, /<string>com\.opendex\.bridge<\/string>/);
@@ -183,7 +183,7 @@ test("getMacOSBridgeServiceStatus reports launchd + runtime metadata together", 
 
     const status = getMacOSBridgeServiceStatus({
       platform: "darwin",
-      env: { HOME: rootDir, REMODEX_DEVICE_STATE_DIR: rootDir },
+      env: { HOME: rootDir, OPENDEX_DEVICE_STATE_DIR: rootDir },
       execFileSyncImpl() {
         return "pid = 55";
       },
@@ -197,21 +197,21 @@ test("getMacOSBridgeServiceStatus reports launchd + runtime metadata together", 
 });
 
 function withTempDaemonEnv(run) {
-  const previousDir = process.env.REMODEX_DEVICE_STATE_DIR;
+  const previousDir = process.env.OPENDEX_DEVICE_STATE_DIR;
   const previousHome = process.env.HOME;
   const rootDir = fs.mkdtempSync(
-    path.join(os.tmpdir(), "remodex-launch-agent-"),
+    path.join(os.tmpdir(), "opendex-launch-agent-"),
   );
-  process.env.REMODEX_DEVICE_STATE_DIR = rootDir;
+  process.env.OPENDEX_DEVICE_STATE_DIR = rootDir;
   process.env.HOME = rootDir;
 
   try {
     return run({ rootDir });
   } finally {
     if (previousDir === undefined) {
-      delete process.env.REMODEX_DEVICE_STATE_DIR;
+      delete process.env.OPENDEX_DEVICE_STATE_DIR;
     } else {
-      process.env.REMODEX_DEVICE_STATE_DIR = previousDir;
+      process.env.OPENDEX_DEVICE_STATE_DIR = previousDir;
     }
     if (previousHome === undefined) {
       delete process.env.HOME;

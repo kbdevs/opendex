@@ -15,14 +15,14 @@ const { resetBridgeDeviceState } = require("./secure-device-state");
 const {
   clearBridgeStatus,
   clearPairingSession,
-  ensureRemodexLogsDir,
-  ensureRemodexStateDir,
+  ensureOpendexLogsDir,
+  ensureOpendexStateDir,
   readBridgeStatus,
   readDaemonConfig,
   readPairingSession,
   resolveBridgeStderrLogPath,
   resolveBridgeStdoutLogPath,
-  resolveRemodexStateDir,
+  resolveOpendexStateDir,
   writeBridgeStatus,
   writeDaemonConfig,
   writePairingSession,
@@ -86,8 +86,8 @@ async function startMacOSBridgeService({
   writeDaemonConfig(config, { env, fsImpl });
   clearPairingSession({ env, fsImpl });
   clearBridgeStatus({ env, fsImpl });
-  ensureRemodexStateDir({ env, fsImpl, osImpl });
-  ensureRemodexLogsDir({ env, fsImpl, osImpl });
+  ensureOpendexStateDir({ env, fsImpl, osImpl });
+  ensureOpendexLogsDir({ env, fsImpl, osImpl });
 
   const plistPath = writeLaunchAgentPlist({
     env,
@@ -223,7 +223,7 @@ function writeLaunchAgentPlist({
   cliPath = path.resolve(__dirname, "..", "bin", "opendex.js"),
 } = {}) {
   const plistPath = resolveLaunchAgentPlistPath({ env, osImpl });
-  const stateDir = resolveRemodexStateDir({ env, osImpl });
+  const stateDir = resolveOpendexStateDir({ env, osImpl });
   const stdoutLogPath = resolveBridgeStdoutLogPath({ env, osImpl });
   const stderrLogPath = resolveBridgeStderrLogPath({ env, osImpl });
   const homeDir = env.HOME || osImpl.homedir();
