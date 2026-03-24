@@ -212,11 +212,6 @@ struct SidebarView: View {
 
     // Shows a native sheet so folder names and full paths stay readable on small screens.
     private func handleNewChatButtonTap() {
-        if newChatProjectChoices.isEmpty {
-            handleNewChatTap(preferredProjectPath: nil)
-            return
-        }
-
         isShowingNewChatProjectPicker = true
     }
 
@@ -380,29 +375,57 @@ private struct SidebarNewChatProjectPickerSheet: View {
                         .listRowBackground(Color.clear)
                 }
 
-                Section("Local") {
-                    ForEach(choices) { choice in
-                        Button {
-                            dismiss()
-                            onSelectProject(choice.projectPath)
-                        } label: {
-                            HStack(spacing: 12) {
-                                if choice.iconSystemName == "arrow.triangle.branch" {
-                                    CodexWorktreeIcon(pointSize: 16, weight: .medium)
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    Image(systemName: choice.iconSystemName)
-                                        .font(AppFont.body(weight: .medium))
-                                        .foregroundStyle(.secondary)
-                                }
+                if !choices.isEmpty {
+                    Section("Recent local folders") {
+                        ForEach(choices) { choice in
+                            Button {
+                                dismiss()
+                                onSelectProject(choice.projectPath)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    if choice.iconSystemName == "arrow.triangle.branch" {
+                                        CodexWorktreeIcon(pointSize: 16, weight: .medium)
+                                            .foregroundStyle(.secondary)
+                                    } else {
+                                        Image(systemName: choice.iconSystemName)
+                                            .font(AppFont.body(weight: .medium))
+                                            .foregroundStyle(.secondary)
+                                    }
 
-                                Text(choice.label)
+                                    Text(choice.label)
+                                        .font(AppFont.body(weight: .semibold))
+                                        .foregroundStyle(.primary)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                }
+
+                Section("Browse on Mac") {
+                    NavigationLink {
+                        SidebarNewChatDirectoryBrowserView { projectPath in
+                            dismiss()
+                            onSelectProject(projectPath)
+                        }
+                    } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "folder.badge.plus")
+                                .font(AppFont.body(weight: .medium))
+                                .foregroundStyle(.secondary)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Browse folders")
                                     .font(AppFont.body(weight: .semibold))
                                     .foregroundStyle(.primary)
+                                Text("Navigate your Mac and bind the new chat to any local directory.")
+                                    .font(AppFont.body())
+                                    .foregroundStyle(.secondary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            .padding(.vertical, 2)
                         }
+                        .padding(.vertical, 2)
                     }
                 }
 
@@ -451,6 +474,160 @@ private struct SidebarNewChatProjectPickerSheet: View {
                 }
             }
         }
-        .presentationDetents(choices.count > 4 ? [.medium, .large] : [.medium])
+        .presentationDetents(choices.count > 2 ? [.medium, .large] : [.medium, .large])
+    }
+}
+
+private struct SidebarNewChatDirectoryBrowserView: View {
+    let initialPath: String?
+    let onSelectProject: (String) -> Void
+
+    @Environment(CodexService.self) private var codex
+
+    @State private var listing: CodexWorkspaceDirectoryListing?
+    @State private var isLoading = false
+    @State private var errorMessage: String?
+
+    init(initialPath: String? = nil, onSelectProject: @escaping (String) -> Void) {
+        self.initialPath = initialPath
+        self.onSelectProject = onSelectProject
+    }
+
+    var body: some View {
+        List {
+            if let listing {
+                Section {
+                    Button {
+                        onSelectProject(listing.currentPath)
+                    } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            Image(systemName: "checkmark.circle")
+                                .font(AppFont.body(weight: .medium))
+                                .foregroundStyle(.secondary)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Use this folder")
+                                    .font(AppFont.body(weight: .semibold))
+                                    .foregroundStyle(.primary)
+                                Text(listing.currentPath)
+                                    .font(AppFont.caption())
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+
+                if !quickLocations(for: listing).isEmpty {
+                    Section("Jump to") {
+                        ForEach(quickLocations(for: listing), id: \.path) { location in
+                            NavigationLink {
+                                SidebarNewChatDirectoryBrowserView(initialPath: location.path, onSelectProject: onSelectProject)
+                            } label: {
+                                Label(location.label, systemImage: location.systemImage)
+                                    .font(AppFont.body())
+                            }
+                        }
+                    }
+                }
+
+                Section("Folders") {
+                    if listing.directories.isEmpty {
+                        Text("No subfolders here.")
+                            .font(AppFont.body())
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(listing.directories) { directory in
+                            NavigationLink {
+                                SidebarNewChatDirectoryBrowserView(initialPath: directory.path, onSelectProject: onSelectProject)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(directory.name)
+                                        .font(AppFont.body(weight: .semibold))
+                                        .foregroundStyle(.primary)
+                                    Text(directory.path)
+                                        .font(AppFont.caption())
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                .opacity(directory.isHidden ? 0.72 : 1)
+                                .padding(.vertical, 2)
+                            }
+                        }
+                    }
+                }
+            } else if isLoading {
+                Section {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                        Text("Loading folders…")
+                            .font(AppFont.body())
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .listRowBackground(Color.clear)
+                }
+            } else {
+                Section {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(errorMessage ?? "Unable to load folders.")
+                            .font(AppFont.body())
+                            .foregroundStyle(.secondary)
+                        Button("Try Again") {
+                            Task {
+                                await loadListing()
+                            }
+                        }
+                        .font(AppFont.body(weight: .semibold))
+                    }
+                    .padding(.vertical, 4)
+                    .listRowBackground(Color.clear)
+                }
+            }
+        }
+        .navigationTitle(listing?.displayName ?? "Browse folders")
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: initialPath) {
+            await loadListing()
+        }
+    }
+
+    private func loadListing() async {
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            listing = try await codex.listWorkspaceDirectories(path: initialPath)
+            errorMessage = nil
+        } catch {
+            listing = nil
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func quickLocations(for listing: CodexWorkspaceDirectoryListing) -> [(label: String, systemImage: String, path: String)] {
+        var locations: [(label: String, systemImage: String, path: String)] = []
+
+        if let parentPath = listing.parentPath, parentPath != listing.currentPath {
+            locations.append(("Parent Folder", "arrow.up.left", parentPath))
+        }
+
+        if let homePath = listing.homePath, homePath != listing.currentPath {
+            locations.append(("Home", "house", homePath))
+        }
+
+        if let rootPath = listing.rootPath, rootPath != listing.currentPath {
+            locations.append(("Macintosh Root", "internaldrive", rootPath))
+        }
+
+        if let volumesPath = listing.volumesPath,
+           volumesPath != listing.currentPath,
+           volumesPath != listing.rootPath {
+            locations.append(("Volumes", "externaldrive", volumesPath))
+        }
+
+        return locations
     }
 }

@@ -1,5 +1,5 @@
 // FILE: CodexThreadRuntimeOverrideTests.swift
-// Purpose: Verifies per-thread runtime overrides for reasoning and speed beat app defaults.
+// Purpose: Verifies per-thread runtime overrides for reasoning while speed remains disabled.
 // Layer: Unit Test
 // Exports: CodexThreadRuntimeOverrideTests
 // Depends on: XCTest, CodexMobile
@@ -39,7 +39,7 @@ final class CodexThreadRuntimeOverrideTests: XCTestCase {
         XCTAssertNil(capturedTurnStartParams[0].objectValue?["serviceTier"]?.stringValue)
     }
 
-    func testThreadServiceTierOverridePersistsExplicitNormalSelection() {
+    func testThreadServiceTierOverrideStaysDisabled() {
         let suiteName = "CodexThreadRuntimeOverrideTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName) ?? .standard
         defaults.removePersistentDomain(forName: suiteName)
@@ -49,13 +49,13 @@ final class CodexThreadRuntimeOverrideTests: XCTestCase {
         firstService.setSelectedServiceTier(.fast)
         firstService.setThreadServiceTierOverride(nil, for: "thread-normal")
 
-        XCTAssertTrue(firstService.isThreadServiceTierOverridden("thread-normal"))
+        XCTAssertFalse(firstService.isThreadServiceTierOverridden("thread-normal"))
         XCTAssertNil(firstService.effectiveServiceTier(for: "thread-normal"))
 
         let secondService = CodexService(defaults: defaults)
         Self.retainedServices.append(secondService)
 
-        XCTAssertTrue(secondService.isThreadServiceTierOverridden("thread-normal"))
+        XCTAssertFalse(secondService.isThreadServiceTierOverridden("thread-normal"))
         XCTAssertNil(secondService.effectiveServiceTier(for: "thread-normal"))
     }
 
@@ -72,7 +72,7 @@ final class CodexThreadRuntimeOverrideTests: XCTestCase {
             service.selectedReasoningEffortForSelectedModel(threadId: "thread-new"),
             "high"
         )
-        XCTAssertEqual(service.effectiveServiceTier(for: "thread-new"), .fast)
+        XCTAssertNil(service.effectiveServiceTier(for: "thread-new"))
     }
 
     func testStartThreadUsesProvidedRuntimeOverrideForServiceTier() async throws {
@@ -107,8 +107,8 @@ final class CodexThreadRuntimeOverrideTests: XCTestCase {
         let thread = try await service.startThread(runtimeOverride: override)
 
         XCTAssertEqual(thread.id, "thread-new")
-        XCTAssertEqual(capturedThreadStartParams.first?.objectValue?["serviceTier"]?.stringValue, "fast")
-        XCTAssertEqual(service.effectiveServiceTier(for: "thread-new"), .fast)
+        XCTAssertNil(capturedThreadStartParams.first?.objectValue?["serviceTier"]?.stringValue)
+        XCTAssertNil(service.effectiveServiceTier(for: "thread-new"))
     }
 
     func testUnsupportedThreadReasoningOverrideIsNotReportedAsActive() {

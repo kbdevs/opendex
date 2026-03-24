@@ -13,6 +13,7 @@ import Security
 // Image-heavy thread history and secure-envelope overhead can legitimately exceed 4 MB while
 // reopening a chat, so the limit needs enough headroom for background `thread/read` catches too.
 let codexWebSocketMaximumMessageSizeBytes = 16 * 1024 * 1024
+private let codexRequestTimeoutNanoseconds: UInt64 = 20_000_000_000
 
 private enum CodexRelayTransportPreference {
     case manualTCP
@@ -45,6 +46,27 @@ private func codexLogPairingTransport(_ message: String) {
 }
 
 extension CodexService {
+    var effectiveRequestTimeoutNanoseconds: UInt64 {
+        requestTimeoutNanosecondsOverride ?? codexRequestTimeoutNanoseconds
+    }
+
+    func requestTimeoutMessage(for method: String) -> String {
+        let seconds = max(1, Int(effectiveRequestTimeoutNanoseconds / 1_000_000_000))
+        return "Request timed out after \(seconds)s while waiting for \(method)."
+    }
+
+    func cancelPendingRequestTimeout(for requestKey: String) {
+        pendingRequestTimeoutTasks.removeValue(forKey: requestKey)?.cancel()
+    }
+
+    func cancelAllPendingRequestTimeouts() {
+        let tasks = pendingRequestTimeoutTasks.values
+        pendingRequestTimeoutTasks.removeAll()
+        for task in tasks {
+            task.cancel()
+        }
+    }
+
     // Rejects oversized relay frames before Network.framework turns them into a raw EMSGSIZE failure.
     func validateOutgoingWebSocketMessageSize(_ text: String) throws {
         let payloadSize = Data(text.utf8).count
@@ -77,11 +99,26 @@ extension CodexService {
 
         return try await withCheckedThrowingContinuation { continuation in
             pendingRequests[requestKey] = continuation
+            let timeoutTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: self?.effectiveRequestTimeoutNanoseconds ?? codexRequestTimeoutNanoseconds)
+                guard let self,
+                      let pendingContinuation = self.pendingRequests.removeValue(forKey: requestKey) else {
+                    return
+                }
+                self.cancelPendingRequestTimeout(for: requestKey)
+                pendingContinuation.resume(
+                    throwing: CodexServiceError.invalidInput(self.requestTimeoutMessage(for: method))
+                )
+            }
+            pendingRequestTimeoutTasks[requestKey] = timeoutTask
 
             Task {
                 do {
                     try await sendMessage(request)
                 } catch {
+                    await MainActor.run {
+                        cancelPendingRequestTimeout(for: requestKey)
+                    }
                     if shouldTreatSendFailureAsDisconnect(error) {
                         handleReceiveError(error)
                         return
@@ -128,6 +165,11 @@ extension CodexService {
         let payload = try encoder.encode(message)
         guard let plaintext = String(data: payload, encoding: .utf8) else {
             throw CodexServiceError.invalidResponse("Unable to encode outgoing JSON-RPC payload")
+        }
+
+        if let outboundMessageTransportOverride {
+            try await outboundMessageTransportOverride(plaintext)
+            return
         }
 
         let secureText = try secureWireText(for: plaintext)
@@ -484,6 +526,7 @@ extension CodexService {
     }
 
     func failAllPendingRequests(with error: Error) {
+        cancelAllPendingRequestTimeouts()
         let continuations = pendingRequests
         pendingRequests.removeAll()
 

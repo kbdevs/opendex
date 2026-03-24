@@ -97,6 +97,7 @@ extension CodexService {
         }
 
         let requestKey = idKey(from: responseID)
+        cancelPendingRequestTimeout(for: requestKey)
         guard let continuation = pendingRequests.removeValue(forKey: requestKey) else {
             return
         }
@@ -569,17 +570,7 @@ extension CodexService {
     }
 
     private func handleThreadTokenUsageUpdated(_ paramsObject: IncomingParamsObject?) {
-        guard let threadId = extractThreadID(from: paramsObject), !threadId.isEmpty else {
-            return
-        }
-
-        let eventObject = envelopeEventObject(from: paramsObject)
-        let usageObject = paramsObject?["usage"]?.objectValue
-            ?? eventObject?["usage"]?.objectValue
-            ?? paramsObject
-
-        guard let usage = extractContextWindowUsage(from: usageObject) else { return }
-        contextWindowUsageByThread[threadId] = usage
+        _ = paramsObject
     }
 
     private func handleThreadStatusChanged(_ paramsObject: IncomingParamsObject?) {
@@ -1238,45 +1229,8 @@ extension CodexService {
         payload: IncomingParamsObject,
         paramsObject: IncomingParamsObject?
     ) -> Bool {
-        var normalizedParams = paramsObject ?? [:]
-        if normalizedParams["event"] == nil {
-            normalizedParams["event"] = .object(payload)
-        }
-
-        if normalizedParams["threadId"] == nil,
-           let threadId = firstStringValue(
-            in: payload,
-            keys: ["threadId", "thread_id", "conversationId", "conversation_id"]
-           ) {
-            normalizedParams["threadId"] = .string(threadId)
-        }
-
-        if normalizedParams["turnId"] == nil,
-           let turnId = firstStringValue(in: payload, keys: ["turnId", "turn_id", "id"]) {
-            normalizedParams["turnId"] = .string(turnId)
-        }
-
-        let usageObject = payload["info"]?.objectValue
-            ?? payload["usage"]?.objectValue
-            ?? payload
-        let usage = extractContextWindowUsageFromTokenCountPayload(payload)
-            ?? extractContextWindowUsage(from: usageObject)
-        guard let usage else {
-            return false
-        }
-
-        let turnId = extractTurnID(from: normalizedParams)
-        guard let threadId = resolveContextUsageThreadID(
-            from: normalizedParams,
-            turnIdHint: turnId
-        ) else {
-            return false
-        }
-
-        if let turnId {
-            threadIdByTurnID[turnId] = threadId
-        }
-        contextWindowUsageByThread[threadId] = usage
+        _ = payload
+        _ = paramsObject
         return true
     }
 

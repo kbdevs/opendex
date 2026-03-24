@@ -18,6 +18,7 @@ function createCodexTransport({
   env = process.env,
   WebSocketImpl = WebSocket,
   fetchImpl = globalThis.fetch,
+  spawnImpl = spawn,
 } = {}) {
   const normalizedEndpoint =
     normalizeEndpoint(endpoint) || readOpenCodeEndpoint(env);
@@ -36,7 +37,7 @@ function createCodexTransport({
     });
   }
 
-  return createSpawnTransport({ env });
+  return createSpawnTransport({ env, spawnImpl });
 }
 
 function createOpenCodeTransport({ endpoint, env, fetchImpl }) {
@@ -160,6 +161,9 @@ async function handleOpenCodeMessage({
           supported: false,
         });
         return;
+      case "model/list":
+        await handleModelList({ requestId, context });
+        return;
       case "thread/start":
         await handleThreadStart({ requestId, params, context });
         return;
@@ -216,11 +220,17 @@ async function handleOpenCodeMessage({
 }
 
 async function handleThreadStart({ requestId, params, context }) {
+  const preferredDirectory = readRequestedDirectory(params, context.env);
   const session = await createOpenCodeSession({
     title: readThreadTitle(params) || "Opendex Thread",
+    directory: preferredDirectory,
     context,
   });
-  registerThreadSession(context.sessionByThreadId, session.id, session);
+  registerThreadSession(
+    context.sessionByThreadId,
+    session.id,
+    withSessionDirectory(session, preferredDirectory),
+  );
   emitJsonRpcResult(context.listeners, requestId, {
     threadId: session.id,
     thread: createThreadSummary(session),
@@ -231,6 +241,15 @@ async function handleThreadStart({ requestId, params, context }) {
   emitNotification(context.listeners, "thread/started", {
     threadId: session.id,
     thread: createThreadSummary(session),
+  });
+}
+
+async function handleModelList({ requestId, context }) {
+  const models = await listOpenCodeModels(context);
+  emitJsonRpcResult(context.listeners, requestId, {
+    items: models,
+    data: models,
+    models,
   });
 }
 
@@ -276,13 +295,19 @@ async function handleTurnStart({ requestId, params, context }) {
   if (threadId) {
     session = await readOpenCodeSession(threadId, context);
   } else {
+    const preferredDirectory = readRequestedDirectory(params, context.env);
     session = await createOpenCodeSession({
       title: readThreadTitle(params) || "Opendex Thread",
+      directory: preferredDirectory,
       context,
     });
     threadId = session.id;
     createdThread = true;
-    registerThreadSession(context.sessionByThreadId, threadId, session);
+    registerThreadSession(
+      context.sessionByThreadId,
+      threadId,
+      withSessionDirectory(session, preferredDirectory),
+    );
   }
 
   const turnId = createSyntheticTurnId(threadId);
@@ -307,6 +332,7 @@ async function handleTurnStart({ requestId, params, context }) {
   const response = await postOpenCodeMessage({
     sessionId: threadId,
     prompt: userText,
+    model: readRequestedModel(params),
     context,
   });
   emitAssistantParts({
@@ -356,6 +382,7 @@ async function handleTurnSteer({ requestId, params, context }) {
   const response = await postOpenCodeMessage({
     sessionId: threadId,
     prompt: extractTurnPrompt(params),
+    model: readRequestedModel(params),
     context,
   });
   emitAssistantParts({
@@ -372,19 +399,21 @@ async function handleTurnSteer({ requestId, params, context }) {
   });
 }
 
-async function createOpenCodeSession({ title, context }) {
+async function createOpenCodeSession({ title, directory, context }) {
+  const resolvedDirectory = normalizeOpenCodeDirectory(directory || resolveOpenCodeDirectory(context.env));
   const body = { title };
-  return httpJson({
+  const session = await httpJson({
     endpoint: context.endpoint,
     pathname: "/session",
     method: "POST",
     query: {
-      directory: resolveOpenCodeDirectory(context.env),
+      directory: resolvedDirectory,
     },
     body,
     fetchImpl: context.fetchImpl,
     timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
   });
+  return withSessionDirectory(session, resolvedDirectory);
 }
 
 async function listOpenCodeSessions(context) {
@@ -392,13 +421,51 @@ async function listOpenCodeSessions(context) {
     endpoint: context.endpoint,
     pathname: "/session",
     method: "GET",
-    query: {
-      directory: resolveOpenCodeDirectory(context.env),
-    },
     fetchImpl: context.fetchImpl,
     timeoutMs: 30_000,
   });
   return Array.isArray(response) ? response : [];
+}
+
+async function listOpenCodeModels(context) {
+  const forcedModel = "gpt-5.4";
+
+  try {
+    const config = await httpJson({
+      endpoint: context.endpoint,
+      pathname: "/global/config",
+      method: "GET",
+      fetchImpl: context.fetchImpl,
+      timeoutMs: 5_000,
+    });
+    const models = extractOpenCodeModels(config);
+    const matchingModels = models.filter(
+      (model) => model.id === forcedModel || model.model === forcedModel,
+    );
+    if (matchingModels.length) {
+      return matchingModels.map((model, index) => ({
+        ...model,
+        id: forcedModel,
+        model: forcedModel,
+        displayName: "GPT-5.4",
+        isDefault: index === 0,
+      }));
+    }
+  } catch {
+    // Ignore config lookup failures and fall back to a forced GPT-5.4 entry.
+  }
+
+  return [
+    createModelOption({
+      id: forcedModel,
+      model: forcedModel,
+      displayName: "GPT-5.4",
+      description: "Use GPT-5.4 through the configured OpenCode runtime.",
+      isDefault: true,
+      supportedReasoningEfforts: ["low", "medium", "high"],
+      defaultReasoningEffort: "medium",
+    }),
+  ];
 }
 
 async function readOpenCodeSession(sessionId, context) {
@@ -414,13 +481,17 @@ async function readOpenCodeSession(sessionId, context) {
     pathname: `/session/${encodeURIComponent(sessionId)}`,
     method: "GET",
     query: {
-      directory: resolveOpenCodeDirectory(context.env),
+      directory: resolveOpenCodeSessionDirectory(sessionId, context),
     },
     fetchImpl: context.fetchImpl,
     timeoutMs: 30_000,
   });
-  registerThreadSession(context.sessionByThreadId, sessionId, session);
-  return session;
+  const normalizedSession = withSessionDirectory(
+    session,
+    resolveOpenCodeSessionDirectory(sessionId, context),
+  );
+  registerThreadSession(context.sessionByThreadId, sessionId, normalizedSession);
+  return normalizedSession;
 }
 
 async function readOpenCodeSessionMessages(sessionId, context) {
@@ -429,7 +500,7 @@ async function readOpenCodeSessionMessages(sessionId, context) {
     pathname: `/session/${encodeURIComponent(sessionId)}/message`,
     method: "GET",
     query: {
-      directory: resolveOpenCodeDirectory(context.env),
+      directory: resolveOpenCodeSessionDirectory(sessionId, context),
       limit: "200",
     },
     fetchImpl: context.fetchImpl,
@@ -438,7 +509,14 @@ async function readOpenCodeSessionMessages(sessionId, context) {
   return Array.isArray(response) ? response : [];
 }
 
-async function postOpenCodeMessage({ sessionId, prompt, context }) {
+async function postOpenCodeMessage({ sessionId, prompt, model, context }) {
+  const baselineMessages = await readOpenCodeSessionMessages(
+    sessionId,
+    context,
+  ).catch(() => []);
+  const baselineCount = Array.isArray(baselineMessages)
+    ? baselineMessages.length
+    : 0;
   const body = {
     agent: readFirstDefinedValue([
       context.env.OPENDEX_OPENCODE_AGENT,
@@ -447,12 +525,14 @@ async function postOpenCodeMessage({ sessionId, prompt, context }) {
       DEFAULT_OPENCODE_AGENT,
     ]),
     model:
+      model ||
       readFirstDefinedValue([
         context.env.OPENDEX_OPENCODE_MODEL,
         context.env.REMODEX_OPENCODE_MODEL,
         context.env.PHODEX_OPENCODE_MODEL,
         "",
-      ]) || undefined,
+      ]) ||
+      undefined,
     messageID: createSyntheticMessageId(sessionId),
     parts: [
       {
@@ -462,17 +542,60 @@ async function postOpenCodeMessage({ sessionId, prompt, context }) {
     ],
   };
 
-  return httpJson({
+  const response = await httpJson({
     endpoint: context.endpoint,
     pathname: `/session/${encodeURIComponent(sessionId)}/message`,
     method: "POST",
     query: {
-      directory: resolveOpenCodeDirectory(context.env),
+      directory: resolveOpenCodeSessionDirectory(sessionId, context),
     },
     body,
     fetchImpl: context.fetchImpl,
     timeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
   });
+
+  if (hasRenderableAssistantContent(response)) {
+    return response;
+  }
+
+  return waitForAssistantResponse({
+    sessionId,
+    baselineCount,
+    context,
+    fallbackResponse: response,
+  });
+}
+
+async function waitForAssistantResponse({
+  sessionId,
+  baselineCount,
+  context,
+  fallbackResponse,
+}) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const transcript = await readOpenCodeSessionMessages(
+      sessionId,
+      context,
+    ).catch(() => []);
+    const recentMessages = Array.isArray(transcript)
+      ? transcript.slice(Math.max(0, baselineCount - 1))
+      : [];
+    const assistantMessage = [...recentMessages].reverse().find((message) => {
+      if (message?.info?.role !== "assistant") {
+        return false;
+      }
+      return hasRenderableAssistantContent(message);
+    });
+    if (assistantMessage) {
+      return assistantMessage;
+    }
+
+    if (attempt < 19) {
+      await sleep(500);
+    }
+  }
+
+  return fallbackResponse;
 }
 
 async function httpJson({
@@ -578,18 +701,12 @@ function emitAssistantParts({ listeners, threadId, turnId, response }) {
 }
 
 function createThreadReadResult(session, transcript) {
-  const thread = createThreadSummary(session);
-  const turns = transcript
-    .filter((message) => message?.info?.role === "assistant")
-    .map((message) => ({
-      id: message.info.id,
-      threadId: thread.id,
-      status: message.info.time?.completed ? "completed" : "running",
-      output: extractAssistantTextFromMessage(message),
-      usage: buildTokenUsage(message.info?.tokens),
-      createdAt: message.info?.time?.created,
-      completedAt: message.info?.time?.completed,
-    }));
+  const turns = buildHistoryTurnsFromTranscript(transcript, session.id);
+  const thread = {
+    ...createThreadSummary(session),
+    turns,
+    preview: extractThreadPreviewText(transcript),
+  };
   return {
     thread,
     turns,
@@ -599,14 +716,287 @@ function createThreadReadResult(session, transcript) {
 }
 
 function createThreadSummary(session) {
+  const title = session.title || session.name || session.slug || session.id;
   return {
     id: session.id,
     threadId: session.id,
-    title: session.title || session.name || session.slug || session.id,
+    title,
+    name: title,
+    preview: session.summary || session.preview || title,
     status: session.status || "ready",
+    createdAt: session.created || session.time?.created || null,
     updatedAt: session.updated || session.time?.updated || null,
+    cwd: session.directory || session.path || null,
+    current_working_directory: session.directory || session.path || null,
+    model: session.model || null,
+    modelProvider: session.providerID || session.provider || null,
     source: "opencode",
   };
+}
+
+function extractOpenCodeModels(config) {
+  const entries = [];
+  const seen = new Set();
+
+  const addModel = (entry, providerName = "") => {
+    const option = normalizeOpenCodeModel(entry, providerName);
+    if (!option) {
+      return;
+    }
+    const key = `${option.id}::${option.model}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    entries.push(option);
+  };
+
+  if (config?.providers && typeof config.providers === "object") {
+    for (const [providerName, providerConfig] of Object.entries(
+      config.providers,
+    )) {
+      if (Array.isArray(providerConfig?.models)) {
+        for (const model of providerConfig.models) {
+          addModel(model, providerName);
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(config?.models)) {
+    for (const model of config.models) {
+      addModel(model);
+    }
+  }
+
+  return entries;
+}
+
+function normalizeOpenCodeModel(entry, providerName = "") {
+  if (typeof entry === "string") {
+    return createModelOption({
+      id: entry,
+      model: entry,
+      displayName: entry,
+      description: providerName ? `Available via ${providerName}.` : undefined,
+      isDefault: false,
+    });
+  }
+
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const model = readFirstDefinedValue([
+    entry.model,
+    entry.id,
+    entry.name,
+    entry.slug,
+  ]);
+  if (!model) {
+    return null;
+  }
+
+  const displayName =
+    readFirstDefinedValue([
+      entry.displayName,
+      entry.display_name,
+      entry.label,
+      entry.name,
+      model,
+    ]) || model;
+
+  return createModelOption({
+    id: model,
+    model,
+    displayName,
+    description:
+      readFirstDefinedValue([entry.description, entry.summary]) ||
+      (providerName ? `Available via ${providerName}.` : undefined),
+    isDefault: Boolean(entry.isDefault || entry.is_default),
+    supportedReasoningEfforts: extractStringArray(
+      entry.supportedReasoningEfforts || entry.supported_reasoning_efforts,
+    ),
+    defaultReasoningEffort:
+      readFirstDefinedValue([
+        entry.defaultReasoningEffort,
+        entry.default_reasoning_effort,
+      ]) || undefined,
+  });
+}
+
+function createModelOption({
+  id,
+  model,
+  displayName,
+  description,
+  isDefault,
+  supportedReasoningEfforts = [],
+  defaultReasoningEffort,
+}) {
+  return {
+    id,
+    model,
+    displayName,
+    description: description || "",
+    isDefault: Boolean(isDefault),
+    supportedReasoningEfforts,
+    defaultReasoningEffort: defaultReasoningEffort || null,
+  };
+}
+
+function extractStringArray(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((entry) => typeof entry === "string" && entry.trim());
+}
+
+function buildHistoryTurnsFromTranscript(transcript, threadId) {
+  return transcript
+    .map((message, index) =>
+      buildHistoryTurnFromMessage(message, threadId, index),
+    )
+    .filter(Boolean);
+}
+
+function buildHistoryTurnFromMessage(message, threadId, index) {
+  const role = message?.info?.role;
+  if (role !== "user" && role !== "assistant") {
+    return null;
+  }
+
+  const turnId =
+    message?.info?.id || createSyntheticTurnId(`${threadId}_${index}`);
+  const createdAt = message?.info?.time?.created || null;
+  const completedAt = message?.info?.time?.completed || createdAt;
+  const items = buildHistoryItemsFromMessage(message, threadId, turnId);
+  if (!items.length) {
+    return null;
+  }
+
+  return {
+    id: turnId,
+    threadId,
+    status: completedAt ? "completed" : "running",
+    createdAt,
+    updatedAt: completedAt || createdAt,
+    completedAt,
+    items,
+    output:
+      role === "assistant"
+        ? extractAssistantTextFromMessage(message)
+        : undefined,
+    usage: buildTokenUsage(message?.info?.tokens),
+  };
+}
+
+function buildHistoryItemsFromMessage(message, threadId, turnId) {
+  const role = message?.info?.role;
+  const createdAt = message?.info?.time?.created || null;
+  const parts = Array.isArray(message?.parts) ? message.parts : [];
+  const items = [];
+
+  if (role === "user") {
+    const text = extractMessageText(message);
+    if (text) {
+      items.push(
+        createHistoryTextItem({
+          id: createSyntheticItemId(threadId, "user"),
+          type: "user_message",
+          text,
+          createdAt,
+        }),
+      );
+    }
+    return items;
+  }
+
+  const reasoningText = parts
+    .map(extractReasoningText)
+    .filter(Boolean)
+    .join("\n\n");
+  if (reasoningText) {
+    items.push({
+      id: createSyntheticItemId(threadId, "reasoning"),
+      type: "reasoning",
+      text: reasoningText,
+      createdAt,
+    });
+  }
+
+  const assistantText = extractAssistantTextFromMessage(message);
+  if (assistantText) {
+    items.push(
+      createHistoryTextItem({
+        id: createSyntheticItemId(threadId, "assistant"),
+        type: "assistant_message",
+        text: assistantText,
+        createdAt,
+      }),
+    );
+  }
+
+  return items;
+}
+
+function createHistoryTextItem({ id, type, text, createdAt }) {
+  return {
+    id,
+    type,
+    createdAt,
+    content: [
+      {
+        type: "text",
+        text,
+      },
+    ],
+    text,
+  };
+}
+
+function extractThreadPreviewText(transcript) {
+  const latest = [...transcript].reverse().find((message) => {
+    const role = message?.info?.role;
+    return role === "assistant" || role === "user";
+  });
+  return latest ? extractMessageText(latest) : "";
+}
+
+function extractMessageText(message) {
+  const role = message?.info?.role;
+  if (role === "assistant") {
+    return extractAssistantTextFromMessage(message);
+  }
+
+  const parts = Array.isArray(message?.parts) ? message.parts : [];
+  const text = parts
+    .map((part) => {
+      if (part?.type === "text" && typeof part.text === "string") {
+        return part.text;
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n\n");
+  return text.trim();
+}
+
+function hasRenderableAssistantContent(message) {
+  if (message?.info?.role !== "assistant") {
+    return false;
+  }
+  return Boolean(extractAssistantTextFromMessage(message).trim());
+}
+
+function readRequestedModel(params) {
+  return readFirstDefinedValue([
+    params.model,
+    params.modelId,
+    params.modelID,
+    params.runtime?.model,
+    params.runtimeConfiguration?.model,
+  ]);
 }
 
 function extractAssistantTextFromMessage(message) {
@@ -678,6 +1068,44 @@ function resolveOpenCodeDirectory(env) {
   return resolved;
 }
 
+function normalizeOpenCodeDirectory(candidate) {
+  return path.resolve(candidate || process.cwd());
+}
+
+function readRequestedDirectory(params, env) {
+  const requestedDirectory = readFirstDefinedValue([
+    params.cwd,
+    params.current_working_directory,
+    params.currentWorkingDirectory,
+    params.directory,
+  ]);
+  return normalizeOpenCodeDirectory(requestedDirectory || resolveOpenCodeDirectory(env));
+}
+
+function resolveOpenCodeSessionDirectory(sessionId, context) {
+  const cached = context.sessionByThreadId.get(sessionId);
+  const cachedDirectory = readFirstDefinedValue([
+    cached?.directory,
+    cached?.path,
+  ]);
+  return normalizeOpenCodeDirectory(cachedDirectory || resolveOpenCodeDirectory(context.env));
+}
+
+function withSessionDirectory(session, fallbackDirectory) {
+  if (!session || typeof session !== "object") {
+    return session;
+  }
+
+  if (session.directory || session.path || !fallbackDirectory) {
+    return session;
+  }
+
+  return {
+    ...session,
+    directory: fallbackDirectory,
+  };
+}
+
 function readOpenCodeEndpoint(env) {
   return normalizeEndpoint(
     readFirstDefinedValue([
@@ -692,9 +1120,6 @@ function readOpenCodeEndpoint(env) {
 
 function shouldUseOpenCodeTransport(endpoint, env, fetchImpl) {
   if (isHttpEndpoint(endpoint)) {
-    return true;
-  }
-  if (!endpoint && typeof fetchImpl === "function") {
     return true;
   }
   return Boolean(
@@ -750,11 +1175,17 @@ function readThreadTitle(params) {
 }
 
 function extractTurnPrompt(params) {
+  if (Array.isArray(params.input)) {
+    const inputPrompt = extractPromptFromInputItems(params.input);
+    if (inputPrompt) {
+      return inputPrompt;
+    }
+  }
+
   const directPrompt = readFirstDefinedValue([
     params.prompt,
     params.text,
     params.message,
-    params.input,
     params.content,
   ]);
   if (directPrompt) {
@@ -784,6 +1215,32 @@ function extractTurnPrompt(params) {
   }
 
   return "Continue.";
+}
+
+function extractPromptFromInputItems(inputItems) {
+  return inputItems
+    .map((item) => {
+      if (typeof item === "string") {
+        return item;
+      }
+      if (!item || typeof item !== "object") {
+        return "";
+      }
+      if (item.type === "text" && typeof item.text === "string") {
+        return item.text;
+      }
+      if (item.type === "skill") {
+        return readFirstDefinedValue([item.name, item.id]);
+      }
+      return readFirstDefinedValue([item.text, item.content, item.message]);
+    })
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function createSyntheticTurnId(threadId) {
@@ -838,9 +1295,9 @@ function withErrorCode(error, errorCode) {
   return error;
 }
 
-function createSpawnTransport({ env }) {
+function createSpawnTransport({ env, spawnImpl = spawn }) {
   const launch = createCodexLaunchPlan({ env });
-  const codex = spawn(launch.command, launch.args, launch.options);
+  const codex = spawnImpl(launch.command, launch.args, launch.options);
 
   let stdoutBuffer = "";
   let stderrBuffer = "";

@@ -147,7 +147,7 @@ extension CodexService {
         removeAllThreadTimelineState()
         assistantRevertStateCacheByThread.removeAll()
         assistantRevertStateRevision = 0
-        supportsServiceTier = true
+        supportsServiceTier = false
         hasPresentedServiceTierBridgeUpdatePrompt = false
         supportsThreadFork = true
         hasPresentedThreadForkBridgeUpdatePrompt = false
@@ -241,8 +241,8 @@ extension CodexService {
     func initializeSession() async throws {
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
         let clientInfo: JSONValue = .object([
-            "name": .string("codexmobile_ios"),
-            "title": .string("CodexMobile iOS"),
+            "name": .string("opendex_ios"),
+            "title": .string("Opendex iOS"),
             "version": .string(appVersion),
         ])
 
@@ -384,7 +384,7 @@ extension CodexService {
         removeAllThreadTimelineState()
         assistantRevertStateCacheByThread.removeAll()
         assistantRevertStateRevision = 0
-        supportsServiceTier = true
+        supportsServiceTier = false
         hasPresentedServiceTierBridgeUpdatePrompt = false
         supportsThreadFork = true
         hasPresentedThreadForkBridgeUpdatePrompt = false
@@ -654,7 +654,7 @@ extension CodexService {
         if nsError.domain == NSURLErrorDomain,
            nsError.code == NSURLErrorNotConnectedToInternet,
            requiresLocalNetworkAuthorization(for: URL(string: attemptedURL) ?? URL(fileURLWithPath: "/")) {
-            return "Remodex cannot open the local relay connection on this iPhone. Check Local Network and the app's Wi-Fi/Cellular access in Settings, then retry."
+            return "Opendex cannot open the local relay connection on this iPhone. Check Local Network and the app's Wi-Fi/Cellular access in Settings, then retry."
         }
 
         return error.localizedDescription
@@ -872,7 +872,7 @@ extension CodexService {
             return nil
         }
 
-        return "The saved Mac session is temporarily unavailable. Remodex will keep retrying. If you restarted the bridge on your Mac, scan the new QR code."
+        return "The saved Mac session is temporarily unavailable. Opendex will keep retrying. If you restarted the bridge on your Mac, scan the new QR code."
     }
 
     func retryableSessionUnavailableMessage(forConnectError error: Error) -> String? {
@@ -880,7 +880,7 @@ extension CodexService {
             return nil
         }
 
-        return "The saved Mac session is temporarily unavailable. Remodex will keep retrying. If you restarted the bridge on your Mac, scan the new QR code."
+        return "The saved Mac session is temporarily unavailable. Opendex will keep retrying. If you restarted the bridge on your Mac, scan the new QR code."
     }
 
     // Surfaces relay-enforced drops that keep the pairing valid but lost the current send.
@@ -933,7 +933,7 @@ extension CodexService {
 
         guard status != .denied else {
             let message =
-                "Remodex is not allowed to access your local network. Enable Local Network for Remodex in iPhone Settings and try again."
+                "Opendex is not allowed to access your local network. Enable Local Network for Opendex in iPhone Settings and try again."
             lastErrorMessage = message
             throw CodexServiceError.invalidInput(message)
         }

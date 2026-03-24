@@ -477,8 +477,8 @@ extension CodexService {
 
     // Extracts context window usage from thread/read response if the runtime includes it.
     func extractContextWindowUsageIfAvailable(threadId: String, threadObject: [String: JSONValue]) {
-        guard let usage = extractContextWindowUsage(from: threadObject) else { return }
-        contextWindowUsageByThread[threadId] = usage
+        _ = threadId
+        _ = threadObject
     }
 
     // Appends a user message immediately so UI feels instant before server events arrive.

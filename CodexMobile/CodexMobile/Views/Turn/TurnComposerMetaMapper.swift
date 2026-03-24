@@ -10,47 +10,32 @@ import Foundation
 enum TurnComposerMetaMapper {
     // ─── Model Mapping ────────────────────────────────────────────────
 
-    // Returns models sorted using the explicit product order expected by the UI.
+    // Returns models using backend-provided display names rather than legacy Codex-specific labels.
     static func orderedModels(from models: [CodexModelOption]) -> [CodexModelOption] {
-        let preferredOrder: [String] = [
-            "gpt-5.1-codex-mini",
-            "gpt-5.2",
-            "gpt-5.1-codex-max",
-            "gpt-5.2-codex",
-            "gpt-5.3-codex",
-        ]
-        let rankByModel = Dictionary(uniqueKeysWithValues: preferredOrder.enumerated().map { index, value in
-            (value, index)
-        })
-
-        return models.sorted { lhs, rhs in
-            let lhsRank = rankByModel[lhs.model.lowercased()] ?? Int.max
-            let rhsRank = rankByModel[rhs.model.lowercased()] ?? Int.max
-            if lhsRank == rhsRank {
-                return modelTitle(for: lhs) > modelTitle(for: rhs)
+        models.sorted { lhs, rhs in
+            let lhsTitle = modelTitle(for: lhs)
+            let rhsTitle = modelTitle(for: rhs)
+            let comparison = lhsTitle.localizedCaseInsensitiveCompare(rhsTitle)
+            if comparison == .orderedSame {
+                return lhs.model.localizedCaseInsensitiveCompare(rhs.model) == .orderedAscending
             }
-            return lhsRank < rhsRank
+            return comparison == .orderedAscending
         }
     }
 
-    // Normalizes backend ids into consistent menu labels.
+    // Prefer backend-provided display names so OpenCode-specific models stay accurate.
     static func modelTitle(for model: CodexModelOption) -> String {
-        switch model.model.lowercased() {
-        case "gpt-5.3-codex":
-            return "GPT-5.3-Codex"
-        case "gpt-5.2-codex":
-            return "GPT-5.2-Codex"
-        case "gpt-5.1-codex-max":
-            return "GPT-5.1-Codex-Max"
-        case "gpt-5.4":
-            return "GPT-5.4"
-        case "gpt-5.2":
-            return "GPT-5.2"
-        case "gpt-5.1-codex-mini":
-            return "GPT-5.1-Codex-Mini"
-        default:
-            return model.displayName
+        let normalizedDisplayName = model.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalizedDisplayName.isEmpty {
+            return normalizedDisplayName
         }
+
+        let normalizedModel = model.model.trimmingCharacters(in: .whitespacesAndNewlines)
+        if normalizedModel.isEmpty {
+            return "Runtime default"
+        }
+
+        return normalizedModel
     }
 
     // ─── Reasoning Mapping ───────────────────────────────────────────

@@ -13,7 +13,6 @@ struct SettingsView: View {
     @State private var isShowingMacNameSheet = false
 
     private let runtimeAutoValue = "__AUTO__"
-    private let runtimeNormalValue = "__NORMAL__"
     private let settingsAccentColor = Color(.plan)
 
     var body: some View {
@@ -22,10 +21,8 @@ struct SettingsView: View {
                 SettingsArchivedChatsCard()
                 SettingsAppearanceCard(appFontStyle: appFontStyleBinding)
                 SettingsNotificationsCard()
-                SettingsGPTAccountCard()
                 runtimeDefaultsSection
                 SettingsAboutCard()
-                SettingsUsageCard()
                 connectionSection
             }
             .padding()
@@ -57,16 +54,8 @@ struct SettingsView: View {
             HStack {
                 Text("Model")
                 Spacer()
-                Picker("Model", selection: runtimeModelSelection) {
-                    Text("Auto").tag(runtimeAutoValue)
-                    ForEach(runtimeModelOptions, id: \.id) { model in
-                        Text(TurnComposerMetaMapper.modelTitle(for: model))
-                            .tag(model.id)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .tint(settingsAccentColor)
+                Text("GPT-5.4")
+                    .foregroundStyle(.secondary)
             }
 
             HStack {
@@ -82,20 +71,6 @@ struct SettingsView: View {
                 .labelsHidden()
                 .tint(settingsAccentColor)
                 .disabled(runtimeReasoningOptions.isEmpty)
-            }
-
-            HStack {
-                Text("Speed")
-                Spacer()
-                Picker("Speed", selection: runtimeServiceTierSelection) {
-                    Text("Normal").tag(runtimeNormalValue)
-                    ForEach(CodexServiceTier.allCases, id: \.rawValue) { tier in
-                        Text(tier.displayName).tag(tier.rawValue)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .tint(settingsAccentColor)
             }
 
             HStack {
@@ -215,22 +190,9 @@ struct SettingsView: View {
 
     // MARK: - Runtime bindings
 
-    private var runtimeModelOptions: [CodexModelOption] {
-        TurnComposerMetaMapper.orderedModels(from: codex.availableModels)
-    }
-
     private var runtimeReasoningOptions: [TurnComposerReasoningDisplayOption] {
         TurnComposerMetaMapper.reasoningDisplayOptions(
             from: codex.supportedReasoningEffortsForSelectedModel().map(\.reasoningEffort)
-        )
-    }
-
-    private var runtimeModelSelection: Binding<String> {
-        Binding(
-            get: { codex.selectedModelOption()?.id ?? runtimeAutoValue },
-            set: { selection in
-                codex.setSelectedModelId(selection == runtimeAutoValue ? nil : selection)
-            }
         )
     }
 
@@ -247,17 +209,6 @@ struct SettingsView: View {
         Binding(
             get: { codex.selectedAccessMode },
             set: { codex.setSelectedAccessMode($0) }
-        )
-    }
-
-    private var runtimeServiceTierSelection: Binding<String> {
-        Binding(
-            get: { codex.selectedServiceTier?.rawValue ?? runtimeNormalValue },
-            set: { selection in
-                codex.setSelectedServiceTier(
-                    selection == runtimeNormalValue ? nil : CodexServiceTier(rawValue: selection)
-                )
-            }
         )
     }
 
@@ -340,23 +291,15 @@ private struct SettingsUsageCard: View {
     var body: some View {
         SettingsCard(title: "Usage") {
             UsageStatusSummaryContent(
-                contextWindowUsage: activeThreadContextWindowUsage,
                 rateLimitBuckets: codex.rateLimitBuckets,
                 isLoadingRateLimits: codex.isLoadingRateLimits,
                 rateLimitsErrorMessage: codex.rateLimitsErrorMessage,
-                contextPlacement: .bottom,
                 refreshControl: UsageStatusRefreshControl(
                     title: "Refresh",
                     isRefreshing: isRefreshing,
                     action: refreshStatus
                 )
             )
-
-            if activeThreadID == nil {
-                Text("Open a chat to populate the current thread context window here.")
-                    .font(AppFont.caption())
-                    .foregroundStyle(.secondary)
-            }
         }
         .task {
             await refreshStatusIfNeeded()
@@ -367,24 +310,6 @@ private struct SettingsUsageCard: View {
                 await refreshStatusIfNeeded()
             }
         }
-        .onChange(of: activeThreadID) { _, _ in
-            Task {
-                await refreshStatusIfNeeded()
-            }
-        }
-    }
-
-    private var activeThreadID: String? {
-        let trimmed = codex.activeThreadId?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let trimmed, !trimmed.isEmpty {
-            return trimmed
-        }
-        return nil
-    }
-
-    private var activeThreadContextWindowUsage: ContextWindowUsage? {
-        guard let activeThreadID else { return nil }
-        return codex.contextWindowUsageByThread[activeThreadID]
     }
 
     private func refreshStatus() {
@@ -402,7 +327,7 @@ private struct SettingsUsageCard: View {
 
     private func refreshStatusIfNeeded() async {
         guard !isRefreshing else { return }
-        guard codex.shouldAutoRefreshUsageStatus(threadId: activeThreadID) else { return }
+        guard codex.shouldAutoRefreshUsageStatus(threadId: nil) else { return }
 
         await MainActor.run {
             isRefreshing = true
@@ -413,9 +338,9 @@ private struct SettingsUsageCard: View {
         }
     }
 
-    // Loads account-wide windows globally and thread context from the active chat when available.
+    // Loads account-wide usage state for the current session.
     private func refreshStatusData() async {
-        await codex.refreshUsageStatus(threadId: activeThreadID)
+        await codex.refreshUsageStatus(threadId: nil)
     }
 }
 
@@ -517,182 +442,6 @@ private struct SettingsNotificationsCard: View {
         case .ephemeral: "Ephemeral"
         case .notDetermined: "Not requested"
         @unknown default: "Unknown"
-        }
-    }
-}
-
-private struct SettingsGPTAccountCard: View {
-    @Environment(CodexService.self) private var codex
-    @Environment(\.scenePhase) private var scenePhase
-    @State private var isOpeningLogin = false
-    @State private var isCancellingLogin = false
-    @State private var isLoggingOut = false
-
-    var body: some View {
-        let snapshot = codex.gptAccountSnapshot
-
-        SettingsCard(title: "ChatGPT") {
-            HStack(spacing: 10) {
-                Image(systemName: statusIconName(for: snapshot))
-                    .foregroundStyle(statusIconColor(for: snapshot))
-                Text("Status")
-                Spacer()
-                SettingsStatusPill(label: snapshot.statusLabel)
-            }
-
-            if let detail = snapshot.detailText {
-                Text(detail)
-                    .font(AppFont.caption())
-                    .foregroundStyle(.secondary)
-            }
-
-            if let hint = hintText(for: snapshot) {
-                Text(hint)
-                    .font(AppFont.caption())
-                    .foregroundStyle(.secondary)
-            }
-
-            if let errorMessage = codex.gptAccountErrorMessage,
-               !errorMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                Text(errorMessage)
-                    .font(AppFont.caption())
-                    .foregroundStyle(.red)
-            }
-
-            if !snapshot.isAuthenticated {
-                SettingsButton(
-                    loginButtonTitle(for: snapshot),
-                    isLoading: isOpeningLogin
-                ) {
-                    startLogin()
-                }
-                .opacity(canStartLogin ? 1 : 0.55)
-                .disabled(!canStartLogin)
-            }
-
-            if snapshot.hasActiveLogin {
-                SettingsButton("Cancel login", role: .cancel, isLoading: isCancellingLogin) {
-                    HapticFeedback.shared.triggerImpactFeedback()
-                    cancelPendingLogin()
-                }
-            }
-
-            if snapshot.canLogout {
-                SettingsButton("Log out", role: .destructive, isLoading: isLoggingOut) {
-                    HapticFeedback.shared.triggerImpactFeedback()
-                    logout()
-                }
-            }
-        }
-        .task {
-            await codex.refreshGPTAccountState()
-        }
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            Task {
-                await codex.refreshGPTAccountState()
-            }
-        }
-    }
-
-    private func hintText(for snapshot: CodexGPTAccountSnapshot) -> String? {
-        if snapshot.needsReauth { return "Voice on this bridge needs a fresh ChatGPT sign-in." }
-        if snapshot.isAuthenticated && snapshot.isVoiceTokenReady { return nil }
-        if snapshot.isAuthenticated { return "Waiting for voice sync..." }
-        if snapshot.hasActiveLogin && codex.isConnected { return "Complete sign-in in the browser on this iPhone." }
-        if snapshot.hasActiveLogin { return "Reconnect to your bridge to finish sign-in." }
-        if !codex.isConnected { return "Connect to your bridge first." }
-        return nil
-    }
-
-    private func loginButtonTitle(for snapshot: CodexGPTAccountSnapshot) -> String {
-        if snapshot.hasActiveLogin {
-            return "Open On iPhone Again"
-        }
-        if snapshot.needsReauth || snapshot.status == .expired {
-            return "Sign In on iPhone Again"
-        }
-        return "Log In on iPhone"
-    }
-
-    private func statusIconName(for snapshot: CodexGPTAccountSnapshot) -> String {
-        switch snapshot.status {
-        case .authenticated:
-            return snapshot.needsReauth ? "exclamationmark.triangle.fill" : "checkmark.shield.fill"
-        case .loginPending:
-            return "arrow.up.forward.app.fill"
-        case .expired:
-            return "exclamationmark.triangle.fill"
-        case .notLoggedIn, .unknown:
-            return "person.crop.circle.badge.plus"
-        case .unavailable:
-            return "wifi.slash"
-        }
-    }
-
-    private func statusIconColor(for snapshot: CodexGPTAccountSnapshot) -> Color {
-        switch snapshot.status {
-        case .authenticated:
-            return snapshot.needsReauth ? .orange : .green
-        case .loginPending:
-            return .orange
-        case .expired:
-            return .red
-        case .notLoggedIn, .unknown, .unavailable:
-            return .secondary
-        }
-    }
-
-    private var canStartLogin: Bool {
-        codex.isConnected
-    }
-
-    private func startLogin() {
-        guard !isOpeningLogin else { return }
-        HapticFeedback.shared.triggerImpactFeedback()
-        guard canStartLogin else {
-            codex.gptAccountErrorMessage = "Connect to your bridge before opening ChatGPT sign-in."
-            return
-        }
-
-        isOpeningLogin = true
-        codex.gptAccountErrorMessage = nil
-
-        Task { @MainActor in
-            defer {
-                isOpeningLogin = false
-            }
-
-            do {
-                let authURL = try await codex.startOrResumeGPTLoginOnPhone()
-                await UIApplication.shared.open(authURL)
-            } catch {
-                codex.gptAccountErrorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func cancelPendingLogin() {
-        guard !isCancellingLogin else { return }
-        isCancellingLogin = true
-        codex.gptAccountErrorMessage = nil
-
-        Task { @MainActor in
-            await codex.cancelGPTLogin()
-            await codex.refreshGPTAccountState()
-            isCancellingLogin = false
-        }
-    }
-
-    private func logout() {
-        guard !isLoggingOut else { return }
-        isLoggingOut = true
-        codex.gptAccountErrorMessage = nil
-
-        Task { @MainActor in
-            await codex.logoutGPTAccount()
-            await codex.refreshGPTAccountState()
-            isLoggingOut = false
         }
     }
 }

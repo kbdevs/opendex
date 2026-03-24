@@ -320,7 +320,7 @@ final class CodexService {
     // Per-chat runtime overrides let the composer diverge from app-wide defaults.
     var threadRuntimeOverridesByThreadID: [String: CodexThreadRuntimeOverride] = [:]
     var selectedAccessMode: CodexAccessMode = .onRequest
-    // Bridge-owned ChatGPT auth snapshot used by Settings and voice gating.
+    // Bridge-owned voice-auth snapshot used by Settings and voice gating.
     var gptAccountSnapshot: CodexGPTAccountSnapshot = codexGPTAccountInitialSnapshot() {
         didSet {
             persistGPTAccountSnapshot(gptAccountSnapshot)
@@ -336,7 +336,7 @@ final class CodexService {
     // Runtime compatibility flag for `turn/start.collaborationMode` plan turns.
     var supportsTurnCollaborationMode = false
     // Runtime compatibility flag for `thread/start|turn/start.serviceTier` speed controls.
-    var supportsServiceTier = true
+    var supportsServiceTier = false
     // Runtime compatibility flag for native `thread/fork` conversation branching.
     var supportsThreadFork = true
     // Seeds brand-new chats with one-shot composer actions like code review.
@@ -377,8 +377,13 @@ final class CodexService {
     var usesManualWebSocketTransport = false
     let webSocketQueue = DispatchQueue(label: "CodexMobile.WebSocket", qos: .userInitiated)
     var pendingRequests: [String: CheckedContinuation<RPCMessage, Error>] = [:]
+    @ObservationIgnored var pendingRequestTimeoutTasks: [String: Task<Void, Never>] = [:]
     // Test hook: intercepts outbound RPC requests without requiring a live socket.
     @ObservationIgnored var requestTransportOverride: ((String, JSONValue?) async throws -> RPCMessage)?
+    // Test hook: shortens the default RPC timeout so timeout behavior can be exercised quickly.
+    @ObservationIgnored var requestTimeoutNanosecondsOverride: UInt64?
+    // Test hook: intercepts outbound JSON-RPC payloads before websocket transport.
+    @ObservationIgnored var outboundMessageTransportOverride: ((String) async throws -> Void)?
     // Test hook: stubs trusted-session lookup without performing a real relay HTTP request.
     @ObservationIgnored var trustedSessionResolverOverride: (() async throws -> CodexTrustedSessionResolveResponse)?
     var streamingAssistantMessageByTurnID: [String: String] = [:]
@@ -393,7 +398,6 @@ final class CodexService {
     var assistantCompletionFingerprintByThread: [String: (text: String, timestamp: Date)] = [:]
     // Dedupes concise activity feed lines per thread/turn to avoid visual spam.
     var recentActivityLineByThread: [String: CodexRecentActivityLine] = [:]
-    var contextWindowUsageByThread: [String: ContextWindowUsage] = [:]
     var rateLimitBuckets: [CodexRateLimitBucket] = []
     // Distinguishes "not loaded yet" from "loaded successfully, but no visible buckets exist".
     var hasResolvedRateLimitsSnapshot = false
@@ -409,7 +413,7 @@ final class CodexService {
     var activeThreadSyncTask: Task<Void, Never>?
     var runningThreadWatchSyncTask: Task<Void, Never>?
     var postConnectSyncTask: Task<Void, Never>?
-    // Keeps the phone-side account UI in sync while ChatGPT login is being completed on the Mac.
+    // Keeps the phone-side sign-in UI in sync while voice sign-in is being completed on the Mac.
     var gptAccountLoginSyncTask: Task<Void, Never>?
     var postConnectSyncToken: UUID?
     var connectedServerIdentity: String?

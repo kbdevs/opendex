@@ -160,7 +160,7 @@ private struct VoiceRecordingCapsulePreview: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 22, height: 22)
 
-                    Text("GPT-5.3-Codex")
+                    Text("Runtime default")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
 

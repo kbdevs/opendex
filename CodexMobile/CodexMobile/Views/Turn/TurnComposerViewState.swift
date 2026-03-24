@@ -35,9 +35,6 @@ struct TurnComposerAccessoryState {
     let composerMentionedSkills: [TurnComposerMentionedSkill]
     let composerReviewSelection: TurnComposerReviewSelection?
     let isSubagentsSelectionArmed: Bool
-    let isVoiceRecording: Bool
-    let voiceAudioLevels: [CGFloat]
-    let voiceRecordingDuration: TimeInterval
 
     var showsComposerAttachments: Bool {
         !composerAttachments.isEmpty
@@ -59,11 +56,7 @@ struct TurnComposerAccessoryState {
         isSubagentsSelectionArmed
     }
 
-    var showsVoiceRecordingCapsule: Bool {
-        isVoiceRecording
-    }
-
     var topInputPadding: CGFloat {
-        showsComposerAttachments || showsMentionedFiles || showsMentionedSkills || showsSubagentsSelection || showsVoiceRecordingCapsule || reviewTarget != nil ? 8 : 14
+        showsComposerAttachments || showsMentionedFiles || showsMentionedSkills || showsSubagentsSelection || reviewTarget != nil ? 8 : 14
     }
 }

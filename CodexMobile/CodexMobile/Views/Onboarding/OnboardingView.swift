@@ -45,10 +45,10 @@ struct OnboardingView: View {
                                     .frame(width: 52, height: 52)
                                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                                Text("Remodex")
+                                Text("Opendex")
                                     .font(AppFont.title2(weight: .bold))
 
-                                Text("Control Codex from your iPhone.")
+                                Text("Control OpenCode from your iPhone.")
                                     .font(AppFont.caption(weight: .regular))
                                     .foregroundStyle(.secondary)
                             }
@@ -68,20 +68,20 @@ struct OnboardingView: View {
                                 VStack(spacing: 14) {
                                     OnboardingStepRow(
                                         number: "1",
-                                        title: "Install the Codex CLI",
-                                        command: "npm install -g @openai/codex@latest"
+                                        title: "Start OpenCode",
+                                        command: "opencode serve --port 4096"
                                     )
 
                                     OnboardingStepRow(
                                         number: "2",
-                                        title: "Install the latest Remodex bridge",
-                                        command: "npm install -g remodex@latest"
+                                        title: "Start the Opendex bridge",
+                                        command: "./run-local-opendex.sh"
                                     )
 
                                     OnboardingStepRow(
                                         number: "3",
-                                        title: "Start pairing",
-                                        command: "remodex up"
+                                        title: "Scan the pairing QR",
+                                        subtitle: "Leave both processes running on your Mac, then scan the QR code shown by the bridge."
                                     )
                                 }
                             }

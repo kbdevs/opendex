@@ -1,5 +1,5 @@
 // FILE: CodexService+Account.swift
-// Purpose: Owns ChatGPT account state, browser-login lifecycle, and sanitized bridge refreshes.
+// Purpose: Owns bridge-backed voice-auth state, browser-login lifecycle, and sanitized bridge refreshes.
 // Layer: Service
 // Exports: CodexGPTAccountSnapshot, CodexGPTLoginState, CodexService GPT account helpers
 // Depends on: Foundation, RPCMessage, JSONValue
@@ -130,7 +130,7 @@ struct CodexGPTLoginStartResult: Equatable, Sendable {
 extension CodexService {
     static let legacyGPTLoginCallbackEnabled = true
 
-    // Refreshes the bridge-owned account snapshot without ever fetching GPT tokens on iPhone.
+    // Refreshes the bridge-owned voice-auth snapshot without ever fetching tokens on iPhone.
     func refreshGPTAccountState() async {
         guard isConnected else {
             applyGPTAccountConnectionFallback()
@@ -158,7 +158,7 @@ extension CodexService {
         }
     }
 
-    // Starts a ChatGPT login or reuses the last valid auth URL while login is still pending.
+    // Starts a voice sign-in flow or reuses the last valid auth URL while login is still pending.
     func startOrResumeGPTLogin() async throws -> CodexGPTLoginStartResult {
         if let pendingLogin = currentPendingGPTLogin(),
            let authURL = URL(string: pendingLogin.authURL) {
@@ -203,7 +203,7 @@ extension CodexService {
         return loginStartResult
     }
 
-    // Starts or resumes ChatGPT login, then asks the bridge Mac to open the browser locally.
+    // Starts or resumes voice sign-in, then asks the bridge Mac to open the browser locally.
     func startOrResumeGPTLoginOnMac() async throws {
         guard isConnected else {
             throw CodexServiceError.disconnected
@@ -214,7 +214,7 @@ extension CodexService {
         startGPTLoginSyncIfNeeded()
     }
 
-    // Starts or resumes ChatGPT login and returns the auth URL so iPhone can open it directly.
+    // Starts or resumes voice sign-in and returns the auth URL so iPhone can open it directly.
     func startOrResumeGPTLoginOnPhone() async throws -> URL {
         guard isConnected else {
             throw CodexServiceError.disconnected
@@ -245,7 +245,7 @@ extension CodexService {
         gptAccountErrorMessage = nil
     }
 
-    // Logs the Mac-owned ChatGPT session out without touching pairing or reconnect state.
+    // Logs the bridge-owned voice session out without touching pairing or reconnect state.
     func logoutGPTAccount() async {
         if isConnected {
             _ = try? await sendRequest(method: "account/logout", params: nil)
@@ -270,7 +270,7 @@ extension CodexService {
                 retaining: gptAccountSnapshot
             )
         )
-        gptAccountErrorMessage = "ChatGPT voice needs a fresh sign-in on this iPhone."
+        gptAccountErrorMessage = "Voice on this bridge needs a fresh sign-in on this iPhone."
     }
 
     // Stores an incoming deep-link callback and completes the pending login when the bridge is reachable.
@@ -339,7 +339,7 @@ extension CodexService {
         clearGPTLoginCallbackState()
         stopGPTLoginSync()
         gptAccountErrorMessage = firstStringValue(in: paramsObject, keys: ["error", "message"])
-            ?? "ChatGPT sign-in did not complete."
+            ?? "Voice sign-in did not complete."
         if !gptAccountSnapshot.isAuthenticated {
             applyGPTAccountSnapshot(
                 loggedOutGPTAccountSnapshot(
@@ -409,6 +409,17 @@ extension CodexService {
                     return
                 }
 
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+
+                guard !Task.isCancelled else {
+                    return
+                }
+
+                guard self.currentPendingGPTLogin() != nil else {
+                    self.stopGPTLoginSync()
+                    return
+                }
+
                 if self.isConnected {
                     await self.refreshGPTAccountState()
                 }
@@ -419,8 +430,6 @@ extension CodexService {
                     self.stopGPTLoginSync()
                     return
                 }
-
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
             }
         }
     }
@@ -575,7 +584,7 @@ extension CodexService {
         }
     }
 
-    // Opens the pending ChatGPT login URL on the bridge Mac instead of opening Safari on iPhone.
+    // Opens the pending voice sign-in URL on the bridge Mac instead of opening Safari on iPhone.
     func openGPTLoginOnMac(authURL: URL) async throws {
         _ = try await sendRequest(
             method: "account/login/openOnMac",
@@ -587,7 +596,7 @@ extension CodexService {
 
     func isExpectedGPTLoginCallbackURL(_ url: URL) -> Bool {
         guard let callbackScheme = Bundle.main.object(
-            forInfoDictionaryKey: "PHODEX_CHATGPT_CALLBACK_SCHEME"
+            forInfoDictionaryKey: "OPENDEX_AUTH_CALLBACK_SCHEME"
         ) as? String else {
             return false
         }
@@ -669,7 +678,7 @@ extension CodexService {
         }
 
         guard firstStringValue(in: payloadObject, keys: ["type"]) == "chatgpt" else {
-            throw CodexServiceError.invalidResponse("account/login/start did not return a ChatGPT login flow")
+            throw CodexServiceError.invalidResponse("account/login/start did not return a valid sign-in flow")
         }
 
         guard let loginId = firstStringValue(in: payloadObject, keys: ["loginId", "login_id"]),

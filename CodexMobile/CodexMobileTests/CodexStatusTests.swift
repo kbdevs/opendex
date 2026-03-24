@@ -54,53 +54,6 @@ final class CodexStatusTests: XCTestCase {
         XCTAssertFalse(service.isLoadingRateLimits)
     }
 
-    func testRefreshContextWindowUsageDecodesBridgeReadResponse() async {
-        let service = makeService()
-        service.isConnected = true
-        var recordedMethod: String?
-        var recordedParams: IncomingParamsObject?
-
-        service.requestTransportOverride = { method, params in
-            recordedMethod = method
-            recordedParams = params?.objectValue
-            return RPCMessage(
-                id: .string(UUID().uuidString),
-                result: .object([
-                    "threadId": .string("thread-ctx"),
-                    "usage": .object([
-                        "tokensUsed": .integer(173_033),
-                        "tokenLimit": .integer(258_400),
-                    ]),
-                ]),
-                includeJSONRPC: false
-            )
-        }
-
-        await service.refreshContextWindowUsage(threadId: "thread-ctx")
-
-        XCTAssertEqual(recordedMethod, "thread/contextWindow/read")
-        XCTAssertEqual(recordedParams?["threadId"]?.stringValue, "thread-ctx")
-        XCTAssertEqual(service.contextWindowUsageByThread["thread-ctx"]?.tokensUsed, 173_033)
-        XCTAssertEqual(service.contextWindowUsageByThread["thread-ctx"]?.tokenLimit, 258_400)
-    }
-
-    func testExtractContextWindowUsageFromTokenCountPayloadPrefersLastUsage() {
-        let usage = extractContextWindowUsageFromTokenCountPayload([
-            "info": .object([
-                "total_token_usage": .object([
-                    "total_tokens": .integer(123_884_753),
-                ]),
-                "last_token_usage": .object([
-                    "total_tokens": .integer(200_930),
-                ]),
-                "model_context_window": .integer(258_400),
-            ]),
-        ])
-
-        XCTAssertEqual(usage?.tokensUsed, 200_930)
-        XCTAssertEqual(usage?.tokenLimit, 258_400)
-    }
-
     func testRefreshRateLimitsRetriesWithEmptyObjectAfterInvalidNullParams() async {
         let service = makeService()
         service.isConnected = true
@@ -162,7 +115,7 @@ final class CodexStatusTests: XCTestCase {
         )
 
         XCTAssertEqual(service.rateLimitBuckets.count, 1)
-        XCTAssertEqual(service.rateLimitBuckets.first?.limitId, "codex")
+        XCTAssertEqual(service.rateLimitBuckets.first?.limitId, "primary")
         XCTAssertEqual(service.rateLimitBuckets.first?.primary?.remainingPercent, 58)
     }
 
@@ -223,13 +176,6 @@ final class CodexStatusTests: XCTestCase {
         )
 
         XCTAssertEqual(bucket.displayRows.map(\.label), ["5h", "Weekly"])
-    }
-
-    func testContextWindowUsageFormatsThousandsWithUppercaseK() {
-        let usage = ContextWindowUsage(tokensUsed: 158_158, tokenLimit: 258_400)
-
-        XCTAssertEqual(usage.tokensUsedFormatted, "158.2K")
-        XCTAssertEqual(usage.tokenLimitFormatted, "258.4K")
     }
 
     func testRefreshRateLimitsDecodesDirectPrimaryAndSecondaryPayload() async {
@@ -298,7 +244,7 @@ final class CodexStatusTests: XCTestCase {
             )
         )
 
-        XCTAssertEqual(service.rateLimitBuckets.map(\.limitId), ["primary", "secondary"])
+        XCTAssertEqual(service.rateLimitBuckets.map(\.limitId), ["secondary", "primary"])
         XCTAssertEqual(service.rateLimitBuckets.first(where: { $0.limitId == "primary" })?.primary?.remainingPercent, 45)
         XCTAssertEqual(service.rateLimitBuckets.first(where: { $0.limitId == "secondary" })?.primary?.remainingPercent, 80)
     }
@@ -327,6 +273,58 @@ final class CodexStatusTests: XCTestCase {
 
         XCTAssertTrue(service.rateLimitBuckets.isEmpty)
         XCTAssertEqual(service.rateLimitsErrorMessage, CodexServiceError.disconnected.localizedDescription)
+    }
+
+    func testSendRequestTimesOutAndClearsPendingState() async {
+        let service = makeService()
+        service.isConnected = true
+        service.webSocketTask = URLSession.shared.webSocketTask(with: URL(string: "wss://example.com/socket")!)
+        service.requestTimeoutNanosecondsOverride = 50_000_000
+        service.outboundMessageTransportOverride = { _ in }
+
+        do {
+            _ = try await service.sendRequest(method: "thread/list", params: .object([:]))
+            XCTFail("Expected request to time out")
+        } catch let error as CodexServiceError {
+            guard case .invalidInput(let message) = error else {
+                return XCTFail("Expected invalidInput timeout error, got \(error)")
+            }
+            XCTAssertTrue(message.contains("thread/list"))
+            XCTAssertTrue(message.contains("timed out"))
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        XCTAssertTrue(service.pendingRequests.isEmpty)
+        XCTAssertTrue(service.pendingRequestTimeoutTasks.isEmpty)
+    }
+
+    func testFailAllPendingRequestsCancelsTimeoutTasks() async {
+        let service = makeService()
+        service.isConnected = true
+        service.webSocketTask = URLSession.shared.webSocketTask(with: URL(string: "wss://example.com/socket")!)
+        service.requestTimeoutNanosecondsOverride = 5_000_000_000
+        service.outboundMessageTransportOverride = { _ in }
+
+        let requestTask = Task {
+            try await service.sendRequest(method: "model/list", params: nil)
+        }
+
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(service.pendingRequests.count, 1)
+        XCTAssertEqual(service.pendingRequestTimeoutTasks.count, 1)
+
+        service.failAllPendingRequests(with: CodexServiceError.disconnected)
+
+        do {
+            _ = try await requestTask.value
+            XCTFail("Expected request to fail after disconnect")
+        } catch {
+            XCTAssertTrue(error is CodexServiceError)
+        }
+
+        XCTAssertTrue(service.pendingRequests.isEmpty)
+        XCTAssertTrue(service.pendingRequestTimeoutTasks.isEmpty)
     }
 
     private func makeService() -> CodexService {

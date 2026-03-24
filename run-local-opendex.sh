@@ -16,9 +16,11 @@ RELAY_SERVER_MODULE="${RELAY_DIR}/server.js"
 RELAY_BIND_HOST="${RELAY_BIND_HOST:-0.0.0.0}"
 RELAY_PORT="${RELAY_PORT:-9000}"
 RELAY_HOSTNAME="${RELAY_HOSTNAME:-}"
+EXTERNAL_RELAY_URL="${OPENDEX_RELAY:-${REMODEX_RELAY:-${PHODEX_RELAY:-}}}"
 RELAY_BRIDGE_HOST=""
 RELAY_PID=""
 BRIDGE_SERVICE_STARTED="false"
+STOP_BRIDGE_ON_EXIT="false"
 
 log() {
   echo "[run-local-opendex] $*"
@@ -35,6 +37,7 @@ Usage: ./run-local-opendex.sh [options]
 
 Options:
   --hostname HOSTNAME   Hostname or IP the iPhone should use to reach the relay
+  --relay-url URL       Use an existing ws:// or wss:// relay instead of starting a LAN relay
   --bind-host HOST      Interface/address the local relay should listen on
   --port PORT           Relay port to listen on
   --help                Show this help text
@@ -43,6 +46,7 @@ Defaults:
   --bind-host           0.0.0.0
   --port                9000
   --hostname            macOS LocalHostName.local, then hostname, then localhost
+  --relay-url           reuse OPENDEX_RELAY / REMODEX_RELAY / PHODEX_RELAY when set
 EOF
 }
 
@@ -63,6 +67,11 @@ parse_args() {
       --bind-host)
         require_value "--bind-host" "$#"
         RELAY_BIND_HOST="$2"
+        shift 2
+        ;;
+      --relay-url)
+        require_value "--relay-url" "$#"
+        EXTERNAL_RELAY_URL="$2"
         shift 2
         ;;
       --port)
@@ -124,7 +133,7 @@ healthcheck_host() {
 }
 
 cleanup() {
-  if [[ "${BRIDGE_SERVICE_STARTED}" == "true" ]]; then
+  if [[ "${BRIDGE_SERVICE_STARTED}" == "true" && "${STOP_BRIDGE_ON_EXIT}" == "true" ]]; then
     (
       cd "${BRIDGE_DIR}"
       node ./bin/opendex.js stop >/dev/null 2>&1 || true
@@ -229,6 +238,23 @@ ensure_package_dependencies() {
   (cd "${package_dir}" && bun install)
 }
 
+has_external_relay() {
+  [[ -n "${EXTERNAL_RELAY_URL}" ]]
+}
+
+bridge_relay_url() {
+  if has_external_relay; then
+    printf '%s\n' "${EXTERNAL_RELAY_URL}"
+    return
+  fi
+
+  printf 'ws://%s:%s/relay\n' "${RELAY_HOSTNAME}" "${RELAY_PORT}"
+}
+
+validate_external_relay_url() {
+  [[ "${EXTERNAL_RELAY_URL}" =~ ^wss?://.+$ ]] || die "External relay URL must start with ws:// or wss://"
+}
+
 ensure_port_available() {
   if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"${RELAY_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
     die "Port ${RELAY_PORT} is already in use. Stop the existing listener or rerun with --port."
@@ -284,24 +310,47 @@ NODE
 }
 
 print_summary() {
+  local relay_url
+  relay_url="$(bridge_relay_url)"
+
+  if has_external_relay; then
+    cat <<EOF
+[run-local-opendex] Configuration
+  Relay mode      : external
+  Relay URL       : ${relay_url}
+  Bridge service  : launchd managed
+EOF
+    return
+  fi
+
   cat <<EOF
 [run-local-opendex] Configuration
   Relay bind host : ${RELAY_BIND_HOST}
   Relay port      : ${RELAY_PORT}
   Relay hostname  : ${RELAY_HOSTNAME}
   Bridge host     : ${RELAY_BRIDGE_HOST}
-  Relay URL       : ws://${RELAY_HOSTNAME}:${RELAY_PORT}/relay
+  Relay URL       : ${relay_url}
 EOF
 }
 
 start_bridge() {
+  local relay_url
+  relay_url="$(bridge_relay_url)"
   log "Starting bridge"
   cd "${BRIDGE_DIR}"
-  OPENDEX_RELAY="ws://${RELAY_HOSTNAME}:${RELAY_PORT}/relay" node ./bin/opendex.js up
+  OPENDEX_RELAY="${relay_url}" node ./bin/opendex.js up
   BRIDGE_SERVICE_STARTED="true"
+  STOP_BRIDGE_ON_EXIT="$([[ -n "${RELAY_PID}" ]] && printf 'true' || printf 'false')"
 }
 
 hold_open() {
+  if has_external_relay; then
+    log "Bridge service is running against $(bridge_relay_url)."
+    log "You only need the QR above the first time this iPhone pairs with this Mac + relay."
+    log "Later reconnects can reuse the saved trusted pairing over the same relay."
+    return
+  fi
+
   log "Local relay is ready. Keep this terminal open while testing."
   log "Press Ctrl+C to stop both the local relay and the Opendex bridge service."
   wait "${RELAY_PID}"
@@ -310,16 +359,24 @@ hold_open() {
 trap cleanup EXIT INT TERM
 
 parse_args "$@"
-RELAY_HOSTNAME="$(default_hostname)"
-RELAY_BRIDGE_HOST="$(healthcheck_host)"
 
 ensure_prerequisites
 ensure_package_dependencies "${BRIDGE_DIR}"
 ensure_package_dependencies "${RELAY_DIR}"
-ensure_hostname_belongs_to_this_mac
-ensure_port_available
+
+if has_external_relay; then
+  validate_external_relay_url
+else
+  RELAY_HOSTNAME="$(default_hostname)"
+  RELAY_BRIDGE_HOST="$(healthcheck_host)"
+  ensure_hostname_belongs_to_this_mac
+  ensure_port_available
+fi
+
 print_summary
-start_embedded_relay
-wait_for_relay
+if ! has_external_relay; then
+  start_embedded_relay
+  wait_for_relay
+fi
 start_bridge
 hold_open

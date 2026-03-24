@@ -1,5 +1,5 @@
 // FILE: ContextWindowProgressRing.swift
-// Purpose: Compact progress indicator for context window token usage in composer/meta rows.
+// Purpose: Compact button that opens the rate-limit status popover.
 // Layer: View Component
 // Exports: ContextWindowProgressRing
 // Depends on: SwiftUI, HapticFeedback, UsageStatusSummaryContent
@@ -7,7 +7,6 @@
 import SwiftUI
 
 struct ContextWindowProgressRing: View {
-    let usage: ContextWindowUsage?
     let rateLimitBuckets: [CodexRateLimitBucket]
     let isLoadingRateLimits: Bool
     let rateLimitsErrorMessage: String?
@@ -29,21 +28,9 @@ struct ContextWindowProgressRing: View {
                 Circle()
                     .stroke(Color(.systemGray5), lineWidth: lineWidth)
 
-                if let usage {
-                    Circle()
-                        .trim(from: 0, to: usage.fractionUsed)
-                        .stroke(ringColor(for: usage), style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-
-                    Text("\(usage.percentUsed)")
-                        .font(AppFont.system(size: 6, weight: .semibold))
-                        .minimumScaleFactor(0.75)
-                        .foregroundStyle(ringColor(for: usage))
-                } else {
-                    ProgressView()
-                        .controlSize(.mini)
-                        .tint(Color(.systemGray2))
-                }
+                Image(systemName: "speedometer")
+                    .font(AppFont.system(size: 9, weight: .semibold))
+                    .foregroundStyle(Color(.secondaryLabel))
             }
             .frame(width: ringSize, height: ringSize)
             .frame(width: tapTargetSize, height: tapTargetSize)
@@ -51,8 +38,8 @@ struct ContextWindowProgressRing: View {
             .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Context window")
-        .accessibilityValue(usageAccessibilityValue)
+        .accessibilityLabel("Status")
+        .accessibilityValue(statusAccessibilityValue)
         .popover(isPresented: $isShowingPopover) {
             popoverContent
                 .presentationCompactAdaptation(.popover)
@@ -65,11 +52,9 @@ struct ContextWindowProgressRing: View {
 
     private var popoverContent: some View {
         UsageStatusSummaryContent(
-            contextWindowUsage: usage,
             rateLimitBuckets: rateLimitBuckets,
             isLoadingRateLimits: isLoadingRateLimits,
             rateLimitsErrorMessage: rateLimitsErrorMessage,
-            contextPlacement: .bottom,
             refreshControl: onRefreshStatus.map { _ in
                 UsageStatusRefreshControl(
                     title: "Refresh",
@@ -82,22 +67,17 @@ struct ContextWindowProgressRing: View {
         .frame(minWidth: 260)
     }
 
-    private var usageAccessibilityValue: String {
-        if let usage {
-            return "\(usage.percentUsed) percent used"
+    private var statusAccessibilityValue: String {
+        if isLoadingRateLimits || isRefreshing {
+            return "Refreshing"
         }
-        return "Usage unavailable"
+        if let rateLimitsErrorMessage, !rateLimitsErrorMessage.isEmpty {
+            return rateLimitsErrorMessage
+        }
+        return rateLimitBuckets.isEmpty ? "Rate limits unavailable" : "Rate limits available"
     }
 
-    private func ringColor(for usage: ContextWindowUsage) -> Color {
-        switch usage.fractionUsed {
-        case 0.85...: return .red
-        case 0.65..<0.85: return .orange
-        default: return Color(.systemGray2)
-        }
-    }
-
-    // Refreshes both thread context usage and account windows for the compact status popover.
+    // Refreshes account-level status for the compact status popover.
     private func refreshStatus(triggerHaptic: Bool = true) {
         guard !isRefreshing, let onRefreshStatus else { return }
         if triggerHaptic {

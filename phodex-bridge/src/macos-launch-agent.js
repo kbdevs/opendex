@@ -79,7 +79,7 @@ async function startMacOSBridgeService({
   pairingPollIntervalMs = DEFAULT_PAIRING_WAIT_INTERVAL_MS,
 } = {}) {
   assertDarwinPlatform(platform);
-  const config = readBridgeConfig({ env });
+  const config = resolveBridgeServiceStartConfig({ env, fsImpl });
   assertRelayConfigured(config);
   const startedAt = Date.now();
 
@@ -120,6 +120,22 @@ async function startMacOSBridgeService({
     plistPath,
     pairingSession,
   };
+}
+
+// Reuses the saved daemon relay after first setup so source checkouts do not need
+// OPENDEX_RELAY on every later `opendex up` just to keep trusted reconnect working.
+function resolveBridgeServiceStartConfig({ env = process.env, fsImpl = fs } = {}) {
+  const config = readBridgeConfig({ env });
+  if (typeof config?.relayUrl === "string" && config.relayUrl.trim()) {
+    return config;
+  }
+
+  const savedConfig = readDaemonConfig({ env, fsImpl });
+  if (typeof savedConfig?.relayUrl === "string" && savedConfig.relayUrl.trim()) {
+    return savedConfig;
+  }
+
+  return config;
 }
 
 function stopMacOSBridgeService({
@@ -484,6 +500,7 @@ module.exports = {
   printMacOSBridgePairingQr,
   printMacOSBridgeServiceStatus,
   resetMacOSBridgePairing,
+  resolveBridgeServiceStartConfig,
   resolveLaunchAgentPlistPath,
   runMacOSBridgeService,
   startMacOSBridgeService,

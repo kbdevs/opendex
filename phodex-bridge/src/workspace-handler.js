@@ -54,17 +54,96 @@ function handleWorkspaceRequest(rawMessage, sendResponse) {
 }
 
 async function handleWorkspaceMethod(method, params) {
-  const cwd = await resolveWorkspaceCwd(params);
-  const repoRoot = await resolveRepoRoot(cwd);
-
   switch (method) {
+    case "workspace/listDirectory":
+      return workspaceListDirectory(params);
     case "workspace/revertPatchPreview":
-      return workspaceRevertPatchPreview(repoRoot, params);
+      return withResolvedRepoRoot(params, (repoRoot) =>
+        workspaceRevertPatchPreview(repoRoot, params)
+      );
     case "workspace/revertPatchApply":
-      return withRepoMutationLock(repoRoot, () => workspaceRevertPatchApply(repoRoot, params));
+      return withResolvedRepoRoot(params, (repoRoot) =>
+        withRepoMutationLock(repoRoot, () => workspaceRevertPatchApply(repoRoot, params))
+      );
     default:
       throw workspaceError("unknown_method", `Unknown workspace method: ${method}`);
   }
+}
+
+async function workspaceListDirectory(params) {
+  const requestedPath = firstNonEmptyString([
+    params.path,
+    params.directory,
+    params.cwd,
+    params.currentWorkingDirectory,
+  ]);
+  const resolvedPath = path.resolve(requestedPath || defaultWorkspaceBrowsePath());
+
+  if (!isExistingDirectory(resolvedPath)) {
+    throw workspaceError(
+      "missing_working_directory",
+      "The requested local folder does not exist on this Mac."
+    );
+  }
+
+  let entries;
+  try {
+    entries = await fs.promises.readdir(resolvedPath, { withFileTypes: true });
+  } catch (err) {
+    throw workspaceError(
+      "workspace_error",
+      err && err.code === "EACCES"
+        ? "This folder is not readable on this Mac."
+        : "Unable to browse this folder on the Mac."
+    );
+  }
+
+  const directories = (await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory() || isDirectorySymlink(resolvedPath, entry))
+      .map(async (entry) => {
+        const directoryPath = path.join(resolvedPath, entry.name);
+        const stats = await fs.promises.stat(directoryPath).catch(() => null);
+        return {
+          name: entry.name,
+          path: directoryPath,
+          isHidden: entry.name.startsWith("."),
+          modifiedAt: stats?.mtime ? stats.mtime.toISOString() : null,
+          modifiedTimeMs: stats?.mtimeMs || 0,
+        };
+      })
+  ))
+    .sort((lhs, rhs) => {
+      const modifiedDifference = rhs.modifiedTimeMs - lhs.modifiedTimeMs;
+      if (Math.abs(modifiedDifference) > 1) {
+        return modifiedDifference;
+      }
+      return lhs.name.localeCompare(rhs.name, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    })
+    .map(({ modifiedTimeMs, ...directory }) => directory);
+
+  const rootPath = path.parse(resolvedPath).root || null;
+  const parentPath = rootPath && resolvedPath === rootPath
+    ? null
+    : path.dirname(resolvedPath);
+
+  return {
+    currentPath: resolvedPath,
+    displayName: directoryDisplayName(resolvedPath),
+    parentPath,
+    homePath: os.homedir(),
+    rootPath,
+    volumesPath: process.platform === "darwin" ? "/Volumes" : null,
+    directories,
+  };
+}
+
+function defaultWorkspaceBrowsePath() {
+  const codeDirectory = path.join(os.homedir(), "Documents", "Code");
+  return isExistingDirectory(codeDirectory) ? codeDirectory : os.homedir();
 }
 
 // Validates the reverse patch against the current tree without writing repo files.
@@ -404,6 +483,12 @@ async function resolveWorkspaceCwd(params) {
   return requestedCwd;
 }
 
+async function withResolvedRepoRoot(params, callback) {
+  const cwd = await resolveWorkspaceCwd(params);
+  const repoRoot = await resolveRepoRoot(cwd);
+  return callback(repoRoot);
+}
+
 // Resolves the canonical repo root so revert safety checks stay stable from nested chat folders.
 async function resolveRepoRoot(cwd) {
   try {
@@ -443,6 +528,28 @@ function isExistingDirectory(candidatePath) {
   } catch {
     return false;
   }
+}
+
+function isDirectorySymlink(parentPath, entry) {
+  if (!entry.isSymbolicLink()) {
+    return false;
+  }
+
+  try {
+    return fs.statSync(path.join(parentPath, entry.name)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function directoryDisplayName(candidatePath) {
+  const rootPath = path.parse(candidatePath).root || "";
+  if (rootPath && candidatePath === rootPath) {
+    return rootPath;
+  }
+
+  const baseName = path.basename(candidatePath);
+  return baseName || candidatePath;
 }
 
 function workspaceError(errorCode, userMessage) {

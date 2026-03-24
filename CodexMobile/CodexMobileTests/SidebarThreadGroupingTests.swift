@@ -25,7 +25,7 @@ final class SidebarThreadGroupingTests: XCTestCase {
         XCTAssertEqual(groups.last?.threads.map(\.id), ["thread-c"])
     }
 
-    func testMakeGroupsCreatesNoProjectBucketForThreadsWithoutCwd() {
+    func testMakeGroupsCreatesCloudBucketForThreadsWithoutCwd() {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let threads = [
             makeThread(id: "thread-a", updatedAt: now, cwd: nil),
@@ -36,7 +36,7 @@ final class SidebarThreadGroupingTests: XCTestCase {
 
         XCTAssertEqual(groups.count, 1)
         XCTAssertEqual(groups[0].id, "project:__no_project__")
-        XCTAssertEqual(groups[0].label, "No Project")
+        XCTAssertEqual(groups[0].label, "Cloud")
         XCTAssertNil(groups[0].projectPath)
         XCTAssertEqual(groups[0].threads.map(\.id), ["thread-a", "thread-b"])
     }
@@ -61,26 +61,26 @@ final class SidebarThreadGroupingTests: XCTestCase {
         XCTAssertEqual(groups[1].threads.map(\.id), ["archived-thread"])
     }
 
-    func testMakeGroupsMarksCodexManagedWorktreesInLabelAndIcon() {
+    func testMakeGroupsMarksManagedWorktreesInLabelAndIcon() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let threads = [
-            makeThread(id: "main-thread", updatedAt: now, cwd: "/Users/me/work/Remodex"),
+            makeThread(id: "main-thread", updatedAt: now, cwd: "/Users/me/work/Opendex"),
             makeThread(
                 id: "worktree-thread",
                 updatedAt: now.addingTimeInterval(-60),
-                cwd: "/Users/me/.codex/worktrees/ce15/Remodex"
+                cwd: "/Users/me/.codex/worktrees/ce15/Opendex"
             ),
         ]
 
         let groups = SidebarThreadGrouping.makeGroups(from: threads, now: now)
-        let mainGroup = try XCTUnwrap(groups.first(where: { $0.projectPath == "/Users/me/work/Remodex" }))
+        let mainGroup = try XCTUnwrap(groups.first(where: { $0.projectPath == "/Users/me/work/Opendex" }))
         let worktreeGroup = try XCTUnwrap(
-            groups.first(where: { $0.projectPath == "/Users/me/.codex/worktrees/ce15/Remodex" })
+            groups.first(where: { $0.projectPath == "/Users/me/.codex/worktrees/ce15/Opendex" })
         )
 
-        XCTAssertEqual(mainGroup.label, "Remodex")
-        XCTAssertEqual(mainGroup.iconSystemName, "folder")
-        XCTAssertEqual(worktreeGroup.label, "Remodex 15")
+        XCTAssertEqual(mainGroup.label, "Opendex")
+        XCTAssertEqual(mainGroup.iconSystemName, "laptopcomputer")
+        XCTAssertEqual(worktreeGroup.label, "Opendex [ce15]")
         XCTAssertEqual(worktreeGroup.iconSystemName, "arrow.triangle.branch")
     }
 
@@ -101,28 +101,28 @@ final class SidebarThreadGroupingTests: XCTestCase {
         let choices = SidebarThreadGrouping.makeProjectChoices(from: threads)
 
         XCTAssertEqual(choices.map(\.label), ["app", "site"])
-        XCTAssertEqual(choices.map(\.iconSystemName), ["folder", "folder"])
+        XCTAssertEqual(choices.map(\.iconSystemName), ["laptopcomputer", "laptopcomputer"])
         XCTAssertEqual(choices.map(\.projectPath), ["/Users/me/work/app", "/Users/me/work/site"])
     }
 
-    func testMakeProjectChoicesKeepWorktreeSelectionCompactWithoutShowingPathInLabel() {
+    func testMakeProjectChoicesKeepWorktreeSelectionCompactWithoutShowingPathInLabel() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         let threads = [
-            makeThread(id: "main-thread", updatedAt: now, cwd: "/Users/me/work/Remodex"),
+            makeThread(id: "main-thread", updatedAt: now, cwd: "/Users/me/work/Opendex"),
             makeThread(
                 id: "worktree-thread",
                 updatedAt: now.addingTimeInterval(-60),
-                cwd: "/Users/me/.codex/worktrees/ce15/Remodex"
+                cwd: "/Users/me/.codex/worktrees/ce15/Opendex"
             ),
         ]
 
         let choices = SidebarThreadGrouping.makeProjectChoices(from: threads)
         let labelsByPath = Dictionary(uniqueKeysWithValues: choices.map { ($0.projectPath, $0) })
 
-        XCTAssertEqual(labelsByPath["/Users/me/work/Remodex"]?.label, "Remodex")
-        XCTAssertEqual(labelsByPath["/Users/me/work/Remodex"]?.iconSystemName, "folder")
-        XCTAssertEqual(labelsByPath["/Users/me/.codex/worktrees/ce15/Remodex"]?.label, "Remodex 15")
-        XCTAssertEqual(labelsByPath["/Users/me/.codex/worktrees/ce15/Remodex"]?.iconSystemName, "arrow.triangle.branch")
+        XCTAssertEqual(labelsByPath["/Users/me/work/Opendex"]?.label, "Opendex")
+        XCTAssertEqual(labelsByPath["/Users/me/work/Opendex"]?.iconSystemName, "laptopcomputer")
+        XCTAssertEqual(labelsByPath["/Users/me/.codex/worktrees/ce15/Opendex"]?.label, "Opendex [ce15]")
+        XCTAssertEqual(labelsByPath["/Users/me/.codex/worktrees/ce15/Opendex"]?.iconSystemName, "arrow.triangle.branch")
     }
 
     func testLiveThreadIDsForProjectGroupUsesAllThreadsNotJustFilteredMatches() {
@@ -155,7 +155,7 @@ final class SidebarThreadGroupingTests: XCTestCase {
         ]
         let noProjectGroup = SidebarThreadGroup(
             id: "project:__no_project__",
-            label: "No Project",
+            label: "Cloud",
             kind: .project,
             sortDate: now,
             projectPath: nil,

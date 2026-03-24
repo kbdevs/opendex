@@ -29,13 +29,6 @@ struct TurnComposerHostView: View {
     let onStartForkThreadLocally: () -> Void
     let onOpenForkWorktree: () -> Void
     let onOpenWorktreeHandoff: () -> Void
-    let onShowStatus: () -> Void
-    let voiceButtonPresentation: TurnComposerVoiceButtonPresentation
-    let isVoiceRecording: Bool
-    let voiceAudioLevels: [CGFloat]
-    let voiceRecordingDuration: TimeInterval
-    let onTapVoice: () -> Void
-    let onCancelVoiceRecording: () -> Void
     let onSend: () -> Void
 
     // ─── ENTRY POINT ─────────────────────────────────────────────
@@ -83,10 +76,7 @@ struct TurnComposerHostView: View {
             composerMentionedFiles: viewModel.composerMentionedFiles,
             composerMentionedSkills: viewModel.composerMentionedSkills,
             composerReviewSelection: viewModel.composerReviewSelection,
-            isSubagentsSelectionArmed: viewModel.isSubagentsSelectionArmed,
-            isVoiceRecording: isVoiceRecording,
-            voiceAudioLevels: voiceAudioLevels,
-            voiceRecordingDuration: voiceRecordingDuration
+            isSubagentsSelectionArmed: viewModel.isSubagentsSelectionArmed
         )
         let runtimeState = TurnComposerRuntimeState.resolve(
             codex: codex,
@@ -115,13 +105,7 @@ struct TurnComposerHostView: View {
             isLoadingModels: codex.isLoadingModels,
             runtimeState: runtimeState,
             runtimeActions: runtimeActions,
-            voiceButtonPresentation: voiceButtonPresentation,
             selectedAccessMode: codex.selectedAccessMode,
-            contextWindowUsage: codex.contextWindowUsageByThread[thread.id],
-            rateLimitBuckets: codex.rateLimitBuckets,
-            isLoadingRateLimits: codex.isLoadingRateLimits,
-            rateLimitsErrorMessage: codex.rateLimitsErrorMessage,
-            shouldAutoRefreshUsageStatus: codex.shouldAutoRefreshUsageStatus(threadId: thread.id),
             showsGitBranchSelector: showsGitControls,
             isGitBranchSelectorEnabled: isGitBranchSelectorEnabled,
             availableGitBranchTargets: viewModel.availableGitBranchTargets,
@@ -139,17 +123,10 @@ struct TurnComposerHostView: View {
                 viewModel.selectGitBaseBranch(branch)
             },
             onRefreshGitBranches: onRefreshGitBranches,
-            onRefreshUsageStatus: {
-                await codex.refreshUsageStatus(threadId: thread.id)
-            },
             onSelectAccessMode: codex.setSelectedAccessMode,
-            canHandOffToWorktree: isGitBranchSelectorEnabled
-                && !isWorktreeProject
-                && !viewModel.isCreatingGitWorktree,
+            canHandOffToWorktree: false,
             onTapAddImage: { viewModel.openPhotoLibraryPicker(codex: codex) },
             onTapTakePhoto: { viewModel.openCamera(codex: codex) },
-            onTapVoice: onTapVoice,
-            onCancelVoiceRecording: onCancelVoiceRecording,
             onTapCreateWorktree: onOpenWorktreeHandoff,
             onSetPlanModeArmed: viewModel.setPlanModeArmed,
             onRemoveAttachment: viewModel.removeComposerAttachment,
@@ -191,7 +168,6 @@ struct TurnComposerHostView: View {
                     )
                 case .status:
                     viewModel.onSelectSlashCommand(command)
-                    onShowStatus()
                 case .subagents:
                     viewModel.onSelectSlashCommand(command)
                 }

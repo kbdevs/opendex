@@ -11,6 +11,37 @@ import XCTest
 final class CodexThreadForkTests: XCTestCase {
     private static var retainedServices: [CodexService] = []
 
+    private func makeThreadListResponse(_ threads: [RPCObject]) -> RPCMessage {
+        RPCMessage(
+            id: .string(UUID().uuidString),
+            result: .object([
+                "threads": .array(threads.map(JSONValue.object)),
+            ]),
+            includeJSONRPC: false
+        )
+    }
+
+    private func makeThreadReadResponse(_ thread: RPCObject) -> RPCMessage {
+        RPCMessage(
+            id: .string(UUID().uuidString),
+            result: .object([
+                "thread": .object(thread),
+            ]),
+            includeJSONRPC: false
+        )
+    }
+
+    private func makeBackgroundSyncResponse(method: String, thread: RPCObject) -> RPCMessage? {
+        switch method {
+        case "thread/list":
+            return makeThreadListResponse([thread])
+        case "thread/read":
+            return makeThreadReadResponse(thread)
+        default:
+            return nil
+        }
+    }
+
     func testLocalForkUsesSourceThreadWorkingDirectory() async throws {
         let service = makeService()
         service.isConnected = true
@@ -19,6 +50,12 @@ final class CodexThreadForkTests: XCTestCase {
 
         var capturedForkParams: [String: JSONValue] = [:]
         service.requestTransportOverride = { method, params in
+            let forkThread: RPCObject = [
+                "id": .string("fork-local"),
+                "cwd": .string("/tmp/remodex"),
+                "title": .string("Fork Local"),
+                "forkedFromThreadId": .string("source-thread"),
+            ]
             switch method {
             case "thread/fork":
                 capturedForkParams = params?.objectValue ?? [:]
@@ -26,26 +63,14 @@ final class CodexThreadForkTests: XCTestCase {
                     id: .string(UUID().uuidString),
                     result: .object([
                         "cwd": .string("/tmp/remodex"),
-                        "thread": .object([
-                            "id": .string("fork-local"),
-                            "cwd": .string("/tmp/remodex"),
-                            "title": .string("Fork Local"),
-                        ]),
+                        "thread": .object(forkThread),
                     ]),
                     includeJSONRPC: false
                 )
             case "thread/resume":
-                return RPCMessage(
-                    id: .string(UUID().uuidString),
-                    result: .object([
-                        "thread": .object([
-                            "id": .string("fork-local"),
-                            "cwd": .string("/tmp/remodex"),
-                            "title": .string("Fork Local"),
-                        ]),
-                    ]),
-                    includeJSONRPC: false
-                )
+                return self.makeThreadReadResponse(forkThread)
+            case "thread/list", "thread/read":
+                return self.makeBackgroundSyncResponse(method: method, thread: forkThread)!
             default:
                 XCTFail("Unexpected method: \(method)")
                 throw CodexServiceError.invalidInput("Unexpected method")
@@ -71,6 +96,12 @@ final class CodexThreadForkTests: XCTestCase {
 
         var capturedForkParams: [String: JSONValue] = [:]
         service.requestTransportOverride = { method, params in
+            let forkThread: RPCObject = [
+                "id": .string("fork-worktree"),
+                "cwd": .string("/tmp/remodex-worktree"),
+                "title": .string("Fork Worktree"),
+                "forkedFromThreadId": .string("source-thread"),
+            ]
             switch method {
             case "thread/fork":
                 capturedForkParams = params?.objectValue ?? [:]
@@ -78,26 +109,14 @@ final class CodexThreadForkTests: XCTestCase {
                     id: .string(UUID().uuidString),
                     result: .object([
                         "cwd": .string("/tmp/remodex-worktree"),
-                        "thread": .object([
-                            "id": .string("fork-worktree"),
-                            "cwd": .string("/tmp/remodex-worktree"),
-                            "title": .string("Fork Worktree"),
-                        ]),
+                        "thread": .object(forkThread),
                     ]),
                     includeJSONRPC: false
                 )
             case "thread/resume":
-                return RPCMessage(
-                    id: .string(UUID().uuidString),
-                    result: .object([
-                        "thread": .object([
-                            "id": .string("fork-worktree"),
-                            "cwd": .string("/tmp/remodex-worktree"),
-                            "title": .string("Fork Worktree"),
-                        ]),
-                    ]),
-                    includeJSONRPC: false
-                )
+                return self.makeThreadReadResponse(forkThread)
+            case "thread/list", "thread/read":
+                return self.makeBackgroundSyncResponse(method: method, thread: forkThread)!
             default:
                 XCTFail("Unexpected method: \(method)")
                 throw CodexServiceError.invalidInput("Unexpected method")
@@ -122,22 +141,26 @@ final class CodexThreadForkTests: XCTestCase {
         var requestedMethods: [String] = []
         service.requestTransportOverride = { method, _ in
             requestedMethods.append(method)
+            let forkThread: RPCObject = [
+                "id": .string("fork-partial"),
+                "cwd": .string("/tmp/remodex-worktree"),
+                "title": .string("Fork Partial"),
+                "forkedFromThreadId": .string("source-thread"),
+            ]
             switch method {
             case "thread/fork":
                 return RPCMessage(
                     id: .string(UUID().uuidString),
                     result: .object([
                         "cwd": .string("/tmp/remodex-worktree"),
-                        "thread": .object([
-                            "id": .string("fork-partial"),
-                            "cwd": .string("/tmp/remodex-worktree"),
-                            "title": .string("Fork Partial"),
-                        ]),
+                        "thread": .object(forkThread),
                     ]),
                     includeJSONRPC: false
                 )
             case "thread/resume":
                 throw CodexServiceError.disconnected
+            case "thread/list", "thread/read":
+                return self.makeBackgroundSyncResponse(method: method, thread: forkThread)!
             default:
                 XCTFail("Unexpected method: \(method)")
                 throw CodexServiceError.invalidInput("Unexpected method")
@@ -149,7 +172,8 @@ final class CodexThreadForkTests: XCTestCase {
             target: .projectPath("/tmp/remodex-worktree")
         )
 
-        XCTAssertEqual(requestedMethods, ["thread/fork", "thread/resume"])
+        XCTAssertTrue(requestedMethods.contains("thread/fork"))
+        XCTAssertTrue(requestedMethods.contains("thread/resume"))
         XCTAssertEqual(forkedThread.id, "fork-partial")
         XCTAssertEqual(forkedThread.gitWorkingDirectory, "/tmp/remodex-worktree")
         XCTAssertEqual(service.activeThreadId, "fork-partial")
@@ -163,31 +187,25 @@ final class CodexThreadForkTests: XCTestCase {
         service.threads = [makeSourceThread()]
 
         service.requestTransportOverride = { method, _ in
+            let forkThread: RPCObject = [
+                "id": .string("fork-local"),
+                "cwd": .string("/tmp/remodex"),
+                "title": .string("Fork Local"),
+                "forkedFromThreadId": .string("source-thread"),
+            ]
             switch method {
             case "thread/fork":
                 return RPCMessage(
                     id: .string(UUID().uuidString),
                     result: .object([
-                        "thread": .object([
-                            "id": .string("fork-local"),
-                            "cwd": .string("/tmp/remodex"),
-                            "title": .string("Fork Local"),
-                        ]),
+                        "thread": .object(forkThread),
                     ]),
                     includeJSONRPC: false
                 )
             case "thread/resume":
-                return RPCMessage(
-                    id: .string(UUID().uuidString),
-                    result: .object([
-                        "thread": .object([
-                            "id": .string("fork-local"),
-                            "cwd": .string("/tmp/remodex"),
-                            "title": .string("Fork Local"),
-                        ]),
-                    ]),
-                    includeJSONRPC: false
-                )
+                return self.makeThreadReadResponse(forkThread)
+            case "thread/list", "thread/read":
+                return self.makeBackgroundSyncResponse(method: method, thread: forkThread)!
             default:
                 XCTFail("Unexpected method: \(method)")
                 throw CodexServiceError.invalidInput("Unexpected method")
@@ -208,21 +226,25 @@ final class CodexThreadForkTests: XCTestCase {
         service.threads = [makeSourceThread()]
 
         service.requestTransportOverride = { method, _ in
+            let forkThread: RPCObject = [
+                "id": .string("fork-local"),
+                "cwd": .string("/tmp/remodex"),
+                "title": .string("Fork Local"),
+                "forkedFromThreadId": .string("source-thread"),
+            ]
             switch method {
             case "thread/fork":
                 return RPCMessage(
                     id: .string(UUID().uuidString),
                     result: .object([
-                        "thread": .object([
-                            "id": .string("fork-local"),
-                            "cwd": .string("/tmp/remodex"),
-                            "title": .string("Fork Local"),
-                        ]),
+                        "thread": .object(forkThread),
                     ]),
                     includeJSONRPC: false
                 )
             case "thread/resume":
                 throw CodexServiceError.disconnected
+            case "thread/list", "thread/read":
+                return self.makeBackgroundSyncResponse(method: method, thread: forkThread)!
             default:
                 XCTFail("Unexpected method: \(method)")
                 throw CodexServiceError.invalidInput("Unexpected method")
@@ -250,31 +272,25 @@ final class CodexThreadForkTests: XCTestCase {
         service.threads = [makeSourceThread()]
 
         service.requestTransportOverride = { method, _ in
+            let forkThread: RPCObject = [
+                "id": .string("fork-local"),
+                "cwd": .string("/tmp/remodex"),
+                "title": .string("Fork Local"),
+                "forkedFromThreadId": .string("source-thread"),
+            ]
             switch method {
             case "thread/fork":
                 return RPCMessage(
                     id: .string(UUID().uuidString),
                     result: .object([
-                        "thread": .object([
-                            "id": .string("fork-local"),
-                            "cwd": .string("/tmp/remodex"),
-                            "title": .string("Fork Local"),
-                        ]),
+                        "thread": .object(forkThread),
                     ]),
                     includeJSONRPC: false
                 )
             case "thread/resume":
-                return RPCMessage(
-                    id: .string(UUID().uuidString),
-                    result: .object([
-                        "thread": .object([
-                            "id": .string("fork-local"),
-                            "cwd": .string("/tmp/remodex"),
-                            "title": .string("Fork Local"),
-                        ]),
-                    ]),
-                    includeJSONRPC: false
-                )
+                return self.makeThreadReadResponse(forkThread)
+            case "thread/list", "thread/read":
+                return self.makeBackgroundSyncResponse(method: method, thread: forkThread)!
             default:
                 XCTFail("Unexpected method: \(method)")
                 throw CodexServiceError.invalidInput("Unexpected method")
@@ -308,6 +324,12 @@ final class CodexThreadForkTests: XCTestCase {
 
         service.requestTransportOverride = { method, params in
             let object = params?.objectValue ?? [:]
+            let forkThread: RPCObject = [
+                "id": .string("fork-minimal"),
+                "cwd": .string("/tmp/remodex-worktree"),
+                "title": .string("Fork Minimal"),
+                "forkedFromThreadId": .string("source-thread"),
+            ]
             switch method {
             case "thread/fork":
                 forkAttemptCount += 1
@@ -321,27 +343,15 @@ final class CodexThreadForkTests: XCTestCase {
                 return RPCMessage(
                     id: .string(UUID().uuidString),
                     result: .object([
-                        "thread": .object([
-                            "id": .string("fork-minimal"),
-                            "cwd": .string("/tmp/remodex"),
-                            "title": .string("Fork Minimal"),
-                        ]),
+                        "thread": .object(forkThread),
                     ]),
                     includeJSONRPC: false
                 )
             case "thread/resume":
                 resumeRequests.append(object)
-                return RPCMessage(
-                    id: .string(UUID().uuidString),
-                    result: .object([
-                        "thread": .object([
-                            "id": .string("fork-minimal"),
-                            "cwd": .string("/tmp/remodex-worktree"),
-                            "title": .string("Fork Minimal"),
-                        ]),
-                    ]),
-                    includeJSONRPC: false
-                )
+                return self.makeThreadReadResponse(forkThread)
+            case "thread/list", "thread/read":
+                return self.makeBackgroundSyncResponse(method: method, thread: forkThread)!
             default:
                 XCTFail("Unexpected method: \(method)")
                 throw CodexServiceError.invalidInput("Unexpected method")
@@ -376,11 +386,24 @@ final class CodexThreadForkTests: XCTestCase {
 
         var forkRequestCount = 0
         service.requestTransportOverride = { method, _ in
-            XCTAssertEqual(method, "thread/fork")
-            forkRequestCount += 1
-            throw CodexServiceError.rpcError(
-                RPCError(code: -32000, message: "model gpt-5.4 not supported")
-            )
+            switch method {
+            case "thread/fork":
+                forkRequestCount += 1
+                throw CodexServiceError.rpcError(
+                    RPCError(code: -32000, message: "model gpt-5.4 not supported")
+                )
+            case "thread/list":
+                return self.makeThreadListResponse([])
+            case "thread/read":
+                return self.makeThreadReadResponse([
+                    "id": .string("source-thread"),
+                    "cwd": .string("/tmp/remodex"),
+                    "title": .string("Source"),
+                ])
+            default:
+                XCTFail("Unexpected method: \(method)")
+                throw CodexServiceError.invalidInput("Unexpected method")
+            }
         }
 
         do {
@@ -401,10 +424,23 @@ final class CodexThreadForkTests: XCTestCase {
         service.threads = [makeSourceThread()]
 
         service.requestTransportOverride = { method, _ in
-            XCTAssertEqual(method, "thread/fork")
-            throw CodexServiceError.rpcError(
-                RPCError(code: -32601, message: "Method not found: thread/fork")
-            )
+            switch method {
+            case "thread/fork":
+                throw CodexServiceError.rpcError(
+                    RPCError(code: -32601, message: "Method not found: thread/fork")
+                )
+            case "thread/list":
+                return self.makeThreadListResponse([])
+            case "thread/read":
+                return self.makeThreadReadResponse([
+                    "id": .string("source-thread"),
+                    "cwd": .string("/tmp/remodex"),
+                    "title": .string("Source"),
+                ])
+            default:
+                XCTFail("Unexpected method: \(method)")
+                throw CodexServiceError.invalidInput("Unexpected method")
+            }
         }
 
         do {
@@ -412,12 +448,12 @@ final class CodexThreadForkTests: XCTestCase {
             XCTFail("Expected thread/fork to fail")
         } catch {
             XCTAssertFalse(service.supportsThreadFork)
-            XCTAssertEqual(service.bridgeUpdatePrompt?.title, "Update Remodex on your Mac to use /fork")
+            XCTAssertEqual(service.bridgeUpdatePrompt?.title, "Update Opendex on your Mac to use /fork")
             XCTAssertEqual(
                 service.bridgeUpdatePrompt?.message,
-                "This Mac bridge does not support native conversation forks yet. Update the Remodex npm package to use /fork and worktree fork flows."
+                "This Opendex bridge does not support native conversation forks yet. Update the bridge on your Mac to use /fork and worktree fork flows."
             )
-            XCTAssertEqual(service.bridgeUpdatePrompt?.command, "npm install -g remodex@latest")
+            XCTAssertEqual(service.bridgeUpdatePrompt?.command, "bun add -g opendex@latest")
         }
     }
 

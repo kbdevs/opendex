@@ -141,6 +141,20 @@ cd opendex
 
 That launcher starts a local relay, points the bridge at `ws://<your-host>:9000/relay`, and prints the pairing QR for the iPhone app.
 
+If you already have a stable relay that both the Mac and iPhone can reach (for example Tailscale or your own hosted `wss://` relay), you can use the same launcher without falling back to LAN-only routing:
+
+```sh
+./run-local-opendex.sh --relay-url "wss://relay.example.com/relay"
+```
+
+Or export it once before starting the bridge:
+
+```sh
+OPENDEX_RELAY="wss://relay.example.com/relay" ./run-local-opendex.sh
+```
+
+When you pair against a stable relay like that, the QR is only needed for the initial trust bootstrap. Later bridge restarts can reuse the saved relay config and the iPhone can reconnect through trusted-session resolve without scanning a fresh QR.
+
 For iPhone self-hosting, the recommended path is Tailscale or another stable private network. Plain LAN pairing over `ws://<lan-ip>` on the same Wi-Fi is still available for local testing, but it can be unreliable on some iOS devices even when the relay and Wi-Fi are healthy.
 
 Options:
@@ -161,6 +175,8 @@ OPENDEX_RELAY="ws://localhost:9000/relay" opendex up
 ```
 
 For self-hosted iPhone usage, prefer a relay URL reachable over Tailscale or another stable private network. Treat plain local `ws://192.168.x.x` pairing as best-effort rather than the recommended production path on iOS.
+
+In a source checkout, `opendex up` now reuses the last saved daemon relay config when one exists, so after the first successful `OPENDEX_RELAY=... opendex up` you do not need to keep re-exporting the same relay just to preserve one-time pairing and trusted reconnect.
 
 A common private setup looks like this:
 

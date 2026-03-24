@@ -48,7 +48,7 @@ enum GPTVoiceTranscriptionError: LocalizedError {
         case .transcriptionFailed(let message):
             return message
         case .authExpired:
-            return "Your ChatGPT login has expired. Sign in again."
+            return "Your voice sign-in has expired. Sign in again."
         }
     }
 }
@@ -178,7 +178,7 @@ final class GPTVoiceTranscriptionManager: ObservableObject {
         let wavData = Self.encodeWAV(samples: resampled, sampleRate: UInt32(Self.targetSampleRate))
 
         let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("remodex-voice-\(UUID().uuidString)")
+            .appendingPathComponent("opendex-voice-\(UUID().uuidString)")
             .appendingPathExtension("wav")
 
         do {
@@ -379,7 +379,7 @@ final class GPTVoiceTranscriptionManager: ObservableObject {
     }
 }
 
-// ─── Direct ChatGPT transcription ────────────────────────────────
+// ─── Direct bridge transcription ─────────────────────────────────
 
 extension GPTVoiceTranscriptionManager {
     private static let chatGPTTranscriptionURL = URL(string: "https://chatgpt.com/backend-api/transcribe")!
@@ -390,7 +390,7 @@ extension GPTVoiceTranscriptionManager {
             return try await transcribeOverride(wavData, token)
         }
 
-        let boundary = "Remodex-\(UUID().uuidString)"
+        let boundary = "Opendex-\(UUID().uuidString)"
 
         var body = Data()
         body.appendUTF8("--\(boundary)\r\n")

@@ -1,8 +1,8 @@
 // FILE: UsageStatusSummaryContent.swift
-// Purpose: Shared usage + rate-limit summary used by status, settings, and context popovers.
+// Purpose: Shared rate-limit summary used by status and settings surfaces.
 // Layer: View Component
 // Exports: UsageStatusSummaryContent, UsageStatusRefreshControl
-// Depends on: SwiftUI, ContextWindowUsage, CodexRateLimitStatus
+// Depends on: SwiftUI, CodexRateLimitStatus
 
 import SwiftUI
 
@@ -13,33 +13,22 @@ struct UsageStatusRefreshControl {
 }
 
 struct UsageStatusSummaryContent: View {
-    enum ContextPlacement {
-        case top
-        case bottom
-    }
-
-    let contextWindowUsage: ContextWindowUsage?
     let rateLimitBuckets: [CodexRateLimitBucket]
     let isLoadingRateLimits: Bool
     let rateLimitsErrorMessage: String?
-    let contextPlacement: ContextPlacement
     let showsRateLimitHeader: Bool
     let refreshControl: UsageStatusRefreshControl?
 
     init(
-        contextWindowUsage: ContextWindowUsage?,
         rateLimitBuckets: [CodexRateLimitBucket],
         isLoadingRateLimits: Bool,
         rateLimitsErrorMessage: String?,
-        contextPlacement: ContextPlacement = .top,
         showsRateLimitHeader: Bool = true,
         refreshControl: UsageStatusRefreshControl? = nil
     ) {
-        self.contextWindowUsage = contextWindowUsage
         self.rateLimitBuckets = rateLimitBuckets
         self.isLoadingRateLimits = isLoadingRateLimits
         self.rateLimitsErrorMessage = rateLimitsErrorMessage
-        self.contextPlacement = contextPlacement
         self.showsRateLimitHeader = showsRateLimitHeader
         self.refreshControl = refreshControl
     }
@@ -50,28 +39,8 @@ struct UsageStatusSummaryContent: View {
                 refreshButton(refreshControl)
             }
 
-            if contextPlacement == .top {
-                contextSection
-            }
-
-            if showsDividerBeforeRateLimits {
-                Divider()
-            }
-
             rateLimitsSection
-
-            if contextPlacement == .bottom {
-                Divider()
-                contextSection
-            }
         }
-    }
-
-    // ─── Shared Sections ────────────────────────────────────────
-
-    private var showsDividerBeforeRateLimits: Bool {
-        guard contextPlacement == .top else { return false }
-        return !rateLimitRows.isEmpty || isLoadingRateLimits || !(rateLimitsErrorMessage?.isEmpty ?? true)
     }
 
     private var rateLimitsSection: some View {
@@ -108,26 +77,6 @@ struct UsageStatusSummaryContent: View {
                 Text("Rate limits are unavailable for this account.")
                     .font(AppFont.caption())
                     .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var contextSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Context window")
-                .font(AppFont.subheadline(weight: .semibold))
-
-            if let contextWindowUsage {
-                metricRow(
-                    label: "Context",
-                    value: "\(contextWindowUsage.percentRemaining)% left",
-                    detail: "(\(compactTokenCount(contextWindowUsage.tokensUsed)) used / \(compactTokenCount(contextWindowUsage.tokenLimit)))",
-                    monospace: true
-                )
-
-                progressBar(progress: contextWindowUsage.fractionUsed)
-            } else {
-                metricRow(label: "Context", value: "Unavailable", detail: "Waiting for token usage")
             }
         }
     }

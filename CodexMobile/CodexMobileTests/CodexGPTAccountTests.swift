@@ -12,6 +12,15 @@ import XCTest
 final class CodexGPTAccountTests: XCTestCase {
     private static var retainedServices: [CodexService] = []
 
+    override func tearDown() {
+        for service in Self.retainedServices {
+            service.requestTransportOverride = nil
+            service.stopGPTLoginSync()
+        }
+        Self.retainedServices.removeAll()
+        super.tearDown()
+    }
+
     func testRefreshGPTAccountStateDecodesSanitizedBridgeStatus() async {
         let service = makeService()
         service.isConnected = true
@@ -107,6 +116,8 @@ final class CodexGPTAccountTests: XCTestCase {
         XCTAssertEqual(capturedParams?.objectValue?["type"]?.stringValue, "chatgpt")
         XCTAssertEqual(loginResult.loginId, "login-123")
         XCTAssertEqual(loginResult.authURL.absoluteString, "https://example.com/login")
+        XCTAssertEqual(service.currentPendingGPTLogin()?.loginId, "login-123")
+        XCTAssertEqual(service.currentPendingGPTLogin()?.authURL, "https://example.com/login")
         XCTAssertEqual(service.gptAccountSnapshot.status, .loginPending)
     }
 
@@ -181,7 +192,8 @@ final class CodexGPTAccountTests: XCTestCase {
 
         let authURL = try await service.startOrResumeGPTLoginOnPhone()
 
-        XCTAssertEqual(observedMethods, ["account/login/start"])
+        XCTAssertEqual(observedMethods.first, "account/login/start")
+        XCTAssertFalse(observedMethods.contains("account/login/openOnMac"))
         XCTAssertEqual(authURL.absoluteString, "https://example.com/login")
         XCTAssertEqual(service.gptAccountSnapshot.status, .loginPending)
     }
@@ -389,13 +401,13 @@ final class CodexGPTAccountTests: XCTestCase {
         }
 
         _ = try await service.startOrResumeGPTLogin()
-        await service.handleGPTLoginCallbackURL(URL(string: "phodex://auth/gpt/callback?code=abc")!)
+        await service.handleGPTLoginCallbackURL(URL(string: "opendex://auth/gpt/callback?code=abc")!)
 
         XCTAssertTrue(observedMethods.contains("account/login/complete"))
         XCTAssertEqual(capturedCompleteParams?["loginId"]?.stringValue, "login-123")
         XCTAssertEqual(
             capturedCompleteParams?["callbackUrl"]?.stringValue,
-            "phodex://auth/gpt/callback?code=abc"
+            "opendex://auth/gpt/callback?code=abc"
         )
     }
 
@@ -415,7 +427,7 @@ final class CodexGPTAccountTests: XCTestCase {
         )
         defaults.set(try encoder.encode(snapshot), forKey: "codex.gpt.accountSnapshot")
 
-        let service = CodexService(defaults: defaults)
+        let service = makeService(defaults: defaults)
 
         XCTAssertEqual(service.gptAccountSnapshot.status, .authenticated)
         XCTAssertEqual(service.gptAccountSnapshot.email, "persisted@example.com")
@@ -525,8 +537,8 @@ final class CodexGPTAccountTests: XCTestCase {
         XCTAssertNil(service.currentPendingGPTLogin())
     }
 
-    private func makeService() -> CodexService {
-        let service = CodexService(defaults: makeDefaults())
+    private func makeService(defaults: UserDefaults? = nil) -> CodexService {
+        let service = CodexService(defaults: defaults ?? makeDefaults())
         Self.retainedServices.append(service)
         return service
     }

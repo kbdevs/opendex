@@ -12,7 +12,7 @@ enum TurnComposerSlashCommand: String, Identifiable, Equatable {
     case status
     case subagents
 
-    static let allCommands: [TurnComposerSlashCommand] = [.codeReview, .fork, .status, .subagents]
+    static let allCommands: [TurnComposerSlashCommand] = [.codeReview, .fork, .subagents]
 
     var id: String { rawValue }
 
@@ -36,9 +36,9 @@ enum TurnComposerSlashCommand: String, Identifiable, Equatable {
         case .fork:
             return "Fork this thread into local or a new worktree"
         case .status:
-            return "Show context usage and rate limits"
+            return "Unavailable"
         case .subagents:
-            return "Insert a canned prompt that asks Codex to delegate work"
+            return "Insert a canned prompt that asks OpenCode to delegate work"
         }
     }
 

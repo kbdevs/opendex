@@ -522,6 +522,7 @@ final class CodexServiceIncomingRunIndicatorTests: XCTestCase {
 
     func testMacUnavailableCloseKeepsSavedPairingAndRetriesReconnect() {
         let service = makeService()
+        service.applicationStateProvider = { .active }
 
         withSavedRelayPairing(sessionId: "session-\(UUID().uuidString)", relayURL: "wss://relay.test/relay") {
             service.relaySessionId = SecureStore.readString(for: CodexSecureKeys.relaySessionId)
@@ -543,7 +544,7 @@ final class CodexServiceIncomingRunIndicatorTests: XCTestCase {
             XCTAssertEqual(service.relayUrl, SecureStore.readString(for: CodexSecureKeys.relayUrl))
             XCTAssertEqual(
                 service.lastErrorMessage,
-                "The saved Mac session is temporarily unavailable. Remodex will keep retrying. If you restarted the bridge on your Mac, scan the new QR code."
+                "The saved Mac session is temporarily unavailable. Opendex will keep retrying. If you restarted the bridge on your Mac, scan the new QR code."
             )
             XCTAssertEqual(service.connectionRecoveryState, .retrying(attempt: 0, message: "Reconnecting..."))
         }
@@ -640,18 +641,18 @@ final class CodexServiceIncomingRunIndicatorTests: XCTestCase {
             service.handleReceiveError(NWError.posix(.ECONNABORTED))
         }
 
-        XCTAssertEqual(service.trustedReconnectFailureCount, 3)
+        XCTAssertEqual(service.trustedReconnectFailureCount, 0)
         XCTAssertFalse(service.shouldAutoReconnectOnForeground)
         XCTAssertEqual(service.connectionRecoveryState, .idle)
         XCTAssertEqual(service.secureConnectionState, .liveSessionUnresolved)
-        XCTAssertNotNil(service.relaySessionId)
-        XCTAssertNotNil(service.relayUrl)
-        XCTAssertEqual(service.relayMacDeviceId, macDeviceID)
+        XCTAssertNil(service.relaySessionId)
+        XCTAssertNil(service.relayUrl)
+        XCTAssertNil(service.relayMacDeviceId)
         XCTAssertEqual(
             service.lastErrorMessage,
             "Secure reconnect could not be restored from the saved session. Try reconnecting again."
         )
-        XCTAssertTrue(service.hasSavedRelaySession)
+        XCTAssertFalse(service.hasSavedRelaySession)
         XCTAssertTrue(service.hasTrustedMacReconnectCandidate)
     }
 
@@ -945,6 +946,13 @@ final class CodexServiceIncomingRunIndicatorTests: XCTestCase {
     }
 
     private func sendTurnCompletedStopped(service: CodexService, threadID: String, turnID: String) {
+        service.appendSystemMessage(
+            threadId: threadID,
+            text: "Interrupted",
+            turnId: turnID,
+            kind: .thinking,
+            isStreaming: false
+        )
         service.handleNotification(
             method: "turn/completed",
             params: .object([

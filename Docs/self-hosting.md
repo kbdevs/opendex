@@ -94,6 +94,20 @@ Use this when you want the bridge on your Mac to connect through a relay you run
 
 This is also the best base for a Tailscale setup: the relay can live on a Mac, a mini server, or a VPS you control, as long as the iPhone can reach it reliably.
 
+If you are running from a source checkout and already have a stable relay, you can skip the LAN-only helper mode and point the launcher at that relay directly:
+
+```sh
+./run-local-opendex.sh --relay-url "wss://relay.example.com/relay"
+```
+
+Or equivalently:
+
+```sh
+OPENDEX_RELAY="wss://relay.example.com/relay" ./run-local-opendex.sh
+```
+
+That keeps the bridge daemon pinned to the same relay URL so the first QR only establishes trust once. Later reconnects can resolve the live relay session through the saved relay without asking for another QR.
+
 ### What runs where
 
 On your VPS:

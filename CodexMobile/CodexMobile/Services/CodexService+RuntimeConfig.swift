@@ -6,6 +6,8 @@
 
 import Foundation
 
+private let forcedRuntimeModelID = "gpt-5.4"
+
 extension CodexService {
     // Resolves the effective per-chat override record after normalizing the thread id.
     func threadRuntimeOverride(for threadId: String?) -> CodexThreadRuntimeOverride? {
@@ -69,11 +71,39 @@ extension CodexService {
                 ?? []
 
             let decodedModels = items.compactMap { decodeModel(CodexModelOption.self, from: $0) }
-            availableModels = decodedModels
+            let filteredModels = decodedModels.filter {
+                $0.id == forcedRuntimeModelID || $0.model == forcedRuntimeModelID
+            }
+            let resolvedModels = filteredModels.isEmpty
+                ? [CodexModelOption(
+                    id: forcedRuntimeModelID,
+                    model: forcedRuntimeModelID,
+                    displayName: "GPT-5.4",
+                    description: "Use GPT-5.4 through the configured OpenCode runtime.",
+                    isDefault: true,
+                    supportedReasoningEfforts: [
+                        CodexReasoningEffortOption(reasoningEffort: "low", description: "Low"),
+                        CodexReasoningEffortOption(reasoningEffort: "medium", description: "Medium"),
+                        CodexReasoningEffortOption(reasoningEffort: "high", description: "High"),
+                    ],
+                    defaultReasoningEffort: "medium"
+                )]
+                : filteredModels.map {
+                    CodexModelOption(
+                        id: forcedRuntimeModelID,
+                        model: forcedRuntimeModelID,
+                        displayName: "GPT-5.4",
+                        description: $0.description,
+                        isDefault: true,
+                        supportedReasoningEfforts: $0.supportedReasoningEfforts,
+                        defaultReasoningEffort: $0.defaultReasoningEffort
+                    )
+                }
+            availableModels = resolvedModels
             modelsErrorMessage = nil
             normalizeRuntimeSelectionsAfterModelsUpdate()
 
-            debugRuntimeLog("model/list success count=\(decodedModels.count)")
+            debugRuntimeLog("model/list success count=\(resolvedModels.count)")
         } catch {
             handleModelListFailure(error)
             throw error
@@ -82,7 +112,11 @@ extension CodexService {
 
     func setSelectedModelId(_ modelId: String?) {
         let normalized = modelId?.trimmingCharacters(in: .whitespacesAndNewlines)
-        selectedModelId = (normalized?.isEmpty == false) ? normalized : nil
+        if normalized == nil || normalized?.isEmpty == true || normalized == forcedRuntimeModelID {
+            selectedModelId = forcedRuntimeModelID
+        } else {
+            selectedModelId = forcedRuntimeModelID
+        }
         normalizeRuntimeSelectionsAfterModelsUpdate()
     }
 
@@ -121,19 +155,14 @@ extension CodexService {
     }
 
     func setSelectedServiceTier(_ serviceTier: CodexServiceTier?) {
-        selectedServiceTier = serviceTier
+        _ = serviceTier
+        selectedServiceTier = nil
         persistRuntimeSelections()
     }
 
     func setThreadServiceTierOverride(_ serviceTier: CodexServiceTier?, for threadId: String?) {
-        guard let normalizedThreadID = normalizedInterruptIdentifier(threadId) else {
-            return
-        }
-
-        mutateThreadRuntimeOverride(for: normalizedThreadID) { override in
-            override.serviceTierRawValue = serviceTier?.rawValue
-            override.overridesServiceTier = true
-        }
+        _ = serviceTier
+        clearThreadServiceTierOverride(for: threadId)
     }
 
     func clearThreadServiceTierOverride(for threadId: String?) {
@@ -231,19 +260,13 @@ extension CodexService {
     }
 
     func effectiveServiceTier(for threadId: String? = nil) -> CodexServiceTier? {
-        if let threadOverride = threadRuntimeOverride(for: threadId),
-           threadOverride.overridesServiceTier {
-            return threadOverride.serviceTier
-        }
-
-        return selectedServiceTier
+        _ = threadId
+        return nil
     }
 
     func runtimeServiceTierForTurn(threadId: String? = nil) -> String? {
-        guard supportsServiceTier else {
-            return nil
-        }
-        return effectiveServiceTier(for: threadId)?.rawValue
+        _ = threadId
+        return nil
     }
 
     // Copies per-chat runtime overrides forward when we continue an archived thread.
@@ -406,6 +429,7 @@ private extension CodexService {
 
         let resolvedModel = selectedModelOption(from: availableModels) ?? fallbackModel(from: availableModels)
         selectedModelId = resolvedModel?.id
+        selectedServiceTier = nil
 
         if let resolvedModel {
             let supported = Set(resolvedModel.supportedReasoningEfforts.map { $0.reasoningEffort })
@@ -434,15 +458,22 @@ private extension CodexService {
             return nil
         }
 
+        if let directMatch = models.first(where: { $0.id == forcedRuntimeModelID || $0.model == forcedRuntimeModelID }) {
+            return directMatch
+        }
+
         if let selectedModelId,
            let directMatch = models.first(where: { $0.id == selectedModelId || $0.model == selectedModelId }) {
             return directMatch
         }
 
-        return nil
+        return models.first
     }
 
     func fallbackModel(from models: [CodexModelOption]) -> CodexModelOption? {
+        if let forcedModel = models.first(where: { $0.id == forcedRuntimeModelID || $0.model == forcedRuntimeModelID }) {
+            return forcedModel
+        }
         if let defaultModel = models.first(where: { $0.isDefault }) {
             return defaultModel
         }
@@ -462,11 +493,7 @@ private extension CodexService {
             defaults.removeObject(forKey: Self.selectedReasoningEffortDefaultsKey)
         }
 
-        if let selectedServiceTier {
-            defaults.set(selectedServiceTier.rawValue, forKey: Self.selectedServiceTierDefaultsKey)
-        } else {
-            defaults.removeObject(forKey: Self.selectedServiceTierDefaultsKey)
-        }
+        defaults.removeObject(forKey: Self.selectedServiceTierDefaultsKey)
 
         defaults.set(selectedAccessMode.rawValue, forKey: Self.selectedAccessModeDefaultsKey)
         persistThreadRuntimeOverrides()

@@ -1,5 +1,5 @@
 // FILE: CodexServiceTierTests.swift
-// Purpose: Verifies Fast Mode runtime selection is persisted and sent to app-server payloads.
+// Purpose: Verifies service-tier controls stay disabled in the Opendex runtime.
 // Layer: Unit Test
 // Exports: CodexServiceTierTests
 // Depends on: XCTest, CodexMobile
@@ -11,7 +11,7 @@ import XCTest
 final class CodexServiceTierTests: XCTestCase {
     private static var retainedServices: [CodexService] = []
 
-    func testTurnStartIncludesSelectedServiceTier() async throws {
+    func testTurnStartDoesNotIncludeServiceTier() async throws {
         let service = makeService()
         service.isConnected = true
         service.availableModels = [makeModel()]
@@ -31,25 +31,19 @@ final class CodexServiceTierTests: XCTestCase {
 
         try await service.sendTurnStart("Ship this quickly", to: "thread-fast")
 
-        XCTAssertEqual(
-            capturedTurnStartParams.first?.objectValue?["serviceTier"]?.stringValue,
-            "fast"
-        )
+        XCTAssertNil(capturedTurnStartParams.first?.objectValue?["serviceTier"]?.stringValue)
     }
 
-    func testSetSelectedServiceTierPersistsChoice() {
+    func testSetSelectedServiceTierAlwaysClearsChoice() {
         let service = makeService()
 
         service.setSelectedServiceTier(.fast)
 
-        XCTAssertEqual(service.selectedServiceTier, .fast)
-        XCTAssertEqual(
-            service.defaults.string(forKey: CodexService.selectedServiceTierDefaultsKey),
-            "fast"
-        )
+        XCTAssertNil(service.selectedServiceTier)
+        XCTAssertNil(service.defaults.string(forKey: CodexService.selectedServiceTierDefaultsKey))
     }
 
-    func testUnsupportedServiceTierDisablesFutureRetriesAndShowsUpdatePromptOnce() async throws {
+    func testSelectingServiceTierDoesNotTriggerCompatibilityPrompt() async throws {
         let service = makeService()
         service.isConnected = true
         service.availableModels = [makeModel()]
@@ -62,12 +56,6 @@ final class CodexServiceTierTests: XCTestCase {
             let safeParams = params ?? .null
             capturedTurnStartParams.append(safeParams)
 
-            if safeParams.objectValue?["serviceTier"]?.stringValue != nil {
-                throw CodexServiceError.rpcError(
-                    RPCError(code: -32602, message: "Unknown field serviceTier")
-                )
-            }
-
             return RPCMessage(
                 id: .string(UUID().uuidString),
                 result: .object(["turnId": .string(UUID().uuidString)]),
@@ -78,17 +66,12 @@ final class CodexServiceTierTests: XCTestCase {
         try await service.sendTurnStart("First send", to: "thread-fast-1")
         try await service.sendTurnStart("Second send", to: "thread-fast-2")
 
-        XCTAssertEqual(capturedTurnStartParams.count, 3)
-        XCTAssertEqual(capturedTurnStartParams[0].objectValue?["serviceTier"]?.stringValue, "fast")
-        XCTAssertNil(capturedTurnStartParams[1].objectValue?["serviceTier"]?.stringValue)
-        XCTAssertNil(capturedTurnStartParams[2].objectValue?["serviceTier"]?.stringValue)
+        XCTAssertEqual(capturedTurnStartParams.count, 2)
+        XCTAssertTrue(capturedTurnStartParams.allSatisfy { params in
+            params.objectValue?["serviceTier"]?.stringValue == nil
+        })
         XCTAssertFalse(service.supportsServiceTier)
-        XCTAssertEqual(service.bridgeUpdatePrompt?.title, "Update Remodex on your Mac to use Speed controls")
-        XCTAssertEqual(
-            service.bridgeUpdatePrompt?.message,
-            "This Mac bridge does not support the selected speed setting yet. Update the Remodex npm package to use Fast Mode and other speed controls."
-        )
-        XCTAssertEqual(service.bridgeUpdatePrompt?.command, "npm install -g remodex@1.1.4")
+        XCTAssertNil(service.bridgeUpdatePrompt)
     }
 
     private func makeService() -> CodexService {

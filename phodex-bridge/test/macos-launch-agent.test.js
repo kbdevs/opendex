@@ -13,6 +13,7 @@ const {
   buildLaunchAgentPlist,
   getMacOSBridgeServiceStatus,
   resetMacOSBridgePairing,
+  resolveBridgeServiceStartConfig,
   resolveLaunchAgentPlistPath,
   runMacOSBridgeService,
   stopMacOSBridgeService,
@@ -21,6 +22,7 @@ const {
   readBridgeStatus,
   readPairingSession,
   writeBridgeStatus,
+  writeDaemonConfig,
   writePairingSession,
 } = require("../src/daemon-state");
 
@@ -161,6 +163,31 @@ test("runMacOSBridgeService records a clean error state instead of throwing when
       "No relay URL configured for the macOS bridge service.",
     );
     assert.equal(typeof status?.updatedAt, "string");
+  });
+});
+
+test("resolveBridgeServiceStartConfig reuses the saved daemon relay config when env is empty", () => {
+  withTempDaemonEnv(({ rootDir }) => {
+    const serviceEnv = {
+      HOME: rootDir,
+      OPENDEX_DEVICE_STATE_DIR: rootDir,
+      PATH: process.env.PATH || "",
+      OPENDEX_RELAY: "",
+      REMODEX_RELAY: "",
+      PHODEX_RELAY: "",
+    };
+
+    writeDaemonConfig(
+      {
+        relayUrl: "wss://relay.example.com/relay",
+        refreshEnabled: true,
+      },
+      { env: serviceEnv }
+    );
+
+    const config = resolveBridgeServiceStartConfig({ env: serviceEnv, fsImpl: fs });
+    assert.equal(config.relayUrl, "wss://relay.example.com/relay");
+    assert.equal(config.refreshEnabled, true);
   });
 });
 

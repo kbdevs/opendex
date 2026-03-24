@@ -459,7 +459,7 @@ private struct PlanAccessoryInContextPreview: View {
                 .frame(width: 32, height: 32)
                 .background(Color(.secondarySystemBackground), in: Circle())
 
-            Text("Ask Codex to continue...")
+            Text("Ask OpenCode to continue...")
                 .font(AppFont.body())
                 .foregroundStyle(.secondary)
 

@@ -1,5 +1,5 @@
 // FILE: CodexService+Voice.swift
-// Purpose: Resolves a ChatGPT token from the bridge and transcribes voice clips directly from the phone.
+// Purpose: Resolves a voice transcription token from the bridge and transcribes clips directly from the phone.
 // Layer: Service
 // Exports: CodexVoiceTranscriptionPreflight, CodexService voice helpers
 // Depends on: Foundation, RPCMessage, JSONValue
@@ -33,11 +33,11 @@ struct CodexVoiceTranscriptionPreflight: Equatable, Sendable {
 }
 
 extension CodexService {
-    // Transcribes a local WAV clip by resolving a ChatGPT token from the bridge,
-    // then calling the ChatGPT transcription API directly from the phone.
+    // Transcribes a local WAV clip by resolving a voice token from the bridge,
+    // then calling the transcription API directly from the phone.
     func transcribeVoiceAudioFile(at url: URL, durationSeconds: TimeInterval) async throws -> String {
         guard isConnected else {
-            throw CodexServiceError.disconnected
+            throw CodexServiceError.invalidInput("Connect to your Mac before using voice transcription.")
         }
 
         let audioData = try Data(contentsOf: url)
@@ -65,7 +65,7 @@ extension CodexService {
         }
     }
 
-    // Asks the bridge for an ephemeral ChatGPT token over the E2E encrypted channel.
+    // Asks the bridge for an ephemeral voice token over the E2E encrypted channel.
     private func resolveVoiceAuthToken() async throws -> String {
         let response = try await sendRequest(method: "voice/resolveAuth", params: nil)
 

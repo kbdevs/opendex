@@ -102,7 +102,7 @@ struct HomeEmptyStateView<AuthSection: View>: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle("Remodex")
+        .navigationTitle("Opendex")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             if connectionPhase == .connecting {

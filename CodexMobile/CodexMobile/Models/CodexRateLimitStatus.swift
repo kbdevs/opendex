@@ -1,5 +1,5 @@
 // FILE: CodexRateLimitStatus.swift
-// Purpose: Models ChatGPT rate-limit buckets shown in the in-app status sheet.
+// Purpose: Models runtime rate-limit buckets shown in the in-app status sheet.
 // Layer: Model
 // Exports: CodexRateLimitBucket, CodexRateLimitWindow, CodexRateLimitDisplayRow
 

@@ -2,10 +2,9 @@
 // Purpose: Owns the secondary composer controls shown below the main input card.
 // Layer: View Component
 // Exports: TurnComposerSecondaryBar
-// Depends on: SwiftUI, UIKit, TurnGitBranchSelector, ContextWindowProgressRing, CodexWorktreeIcon
+// Depends on: SwiftUI, TurnGitBranchSelector, CodexWorktreeIcon
 
 import SwiftUI
-import UIKit
 
 struct TurnComposerSecondaryBar: View {
     let isInputFocused: Bool
@@ -13,11 +12,6 @@ struct TurnComposerSecondaryBar: View {
     let isWorktreeProject: Bool
 
     let selectedAccessMode: CodexAccessMode
-    let contextWindowUsage: ContextWindowUsage?
-    let rateLimitBuckets: [CodexRateLimitBucket]
-    let isLoadingRateLimits: Bool
-    let rateLimitsErrorMessage: String?
-    let shouldAutoRefreshUsageStatus: Bool
 
     let showsGitBranchSelector: Bool
     let isGitBranchSelectorEnabled: Bool
@@ -35,7 +29,6 @@ struct TurnComposerSecondaryBar: View {
     let onCreateGitBranch: (String) -> Void
     let onSelectGitBaseBranch: (String) -> Void
     let onRefreshGitBranches: () -> Void
-    let onRefreshUsageStatus: () async -> Void
     let onSelectAccessMode: (CodexAccessMode) -> Void
     let canHandOffToWorktree: Bool
     let onTapCreateWorktree: () -> Void
@@ -55,7 +48,7 @@ struct TurnComposerSecondaryBar: View {
                     accessMenuLabel
                     Spacer()
 
-                    if showsGitBranchSelector {
+                if showsGitBranchSelector {
                         TurnGitBranchSelector(
                             isEnabled: isGitBranchSelectorEnabled,
                             availableGitBranchTargets: availableGitBranchTargets,
@@ -73,7 +66,6 @@ struct TurnComposerSecondaryBar: View {
                         )
                     }
 
-                    statusControlCircle
                 }
 
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -121,15 +113,6 @@ struct TurnComposerSecondaryBar: View {
             Section("Continue in") {
                 Button {
                     HapticFeedback.shared.triggerImpactFeedback(style: .light)
-                    if let url = URL(string: "https://chatgpt.com/codex") {
-                        UIApplication.shared.open(url)
-                    }
-                } label: {
-                    Label("Cloud", systemImage: "cloud")
-                }
-
-                Button {
-                    HapticFeedback.shared.triggerImpactFeedback(style: .light)
                     onTapCreateWorktree()
                 } label: {
                     CodexWorktreeMenuLabelRow(
@@ -175,17 +158,6 @@ struct TurnComposerSecondaryBar: View {
             .contentShape(Capsule())
         }
         .tint(branchLabelColor)
-    }
-
-    private var statusControlCircle: some View {
-        ContextWindowProgressRing(
-            usage: contextWindowUsage,
-            rateLimitBuckets: rateLimitBuckets,
-            isLoadingRateLimits: isLoadingRateLimits,
-            rateLimitsErrorMessage: rateLimitsErrorMessage,
-            shouldAutoRefreshStatus: shouldAutoRefreshUsageStatus,
-            onRefreshStatus: onRefreshUsageStatus
-        )
     }
 }
 

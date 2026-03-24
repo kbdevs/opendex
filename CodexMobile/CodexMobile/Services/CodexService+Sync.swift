@@ -18,7 +18,7 @@ extension CodexService {
         debugSyncLog("sync loop start")
 
         // Foreground polling is intentionally more aggressive so desktop-authored changes
-        // feel closer to live on iPhone even when Codex.app itself doesn't push updates.
+        // feel closer to live on iPhone even when the desktop app itself doesn't push updates.
         let listIntervalForegroundNs: UInt64 = 10_000_000_000
         let listIntervalBackgroundNs: UInt64 = 75_000_000_000
         let historyIntervalForegroundNs: UInt64 = 3_000_000_000

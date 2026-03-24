@@ -1,5 +1,5 @@
 // FILE: CodexService+Status.swift
-// Purpose: Fetches and tracks status-sheet data such as ChatGPT rate limits.
+// Purpose: Fetches and tracks status-sheet data such as runtime rate limits.
 // Layer: Service
 // Exports: CodexService status helpers
 // Depends on: CodexRateLimitStatus, RPCMessage
@@ -7,11 +7,8 @@
 import Foundation
 
 extension CodexService {
-    // Refreshes the shared usage surfaces with thread context (when available) plus account rate limits.
+    // Refreshes the shared usage surfaces with the latest account rate limits.
     func refreshUsageStatus(threadId: String?) async {
-        if let normalizedThreadID = normalizedUsageStatusThreadID(threadId) {
-            await refreshContextWindowUsage(threadId: normalizedThreadID)
-        }
         await refreshRateLimits()
     }
 
@@ -19,43 +16,11 @@ extension CodexService {
     func shouldAutoRefreshUsageStatus(threadId: String?) -> Bool {
         guard isConnected else { return false }
 
-        let needsContextUsage = normalizedUsageStatusThreadID(threadId).map { normalizedThreadID in
-            contextWindowUsageByThread[normalizedThreadID] == nil
-        } ?? false
-
         let needsRateLimits = !hasResolvedRateLimitsSnapshot
-        return needsContextUsage || needsRateLimits
+        return needsRateLimits
     }
 
-    // Fetches the latest thread-scoped context usage from the local bridge fallback.
-    func refreshContextWindowUsage(threadId: String) async {
-        let trimmedThreadID = threadId.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedThreadID.isEmpty else { return }
-
-        var params: RPCObject = ["threadId": .string(trimmedThreadID)]
-        if let turnId = activeTurnIdByThread[trimmedThreadID]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !turnId.isEmpty {
-            params["turnId"] = .string(turnId)
-        }
-
-        do {
-            let response = try await sendRequest(method: "thread/contextWindow/read", params: .object(params))
-            guard let resultObject = response.result?.objectValue else {
-                throw CodexServiceError.invalidResponse("thread/contextWindow/read response missing payload")
-            }
-
-            guard let usageObject = resultObject["usage"]?.objectValue,
-                  let usage = extractContextWindowUsage(from: usageObject) else {
-                return
-            }
-
-            contextWindowUsageByThread[trimmedThreadID] = usage
-        } catch {
-            debugSyncLog("thread/contextWindow/read failed (non-fatal): \(error.localizedDescription)")
-        }
-    }
-
-    // Fetches the latest ChatGPT rate-limit buckets for the local status sheet.
+    // Fetches the latest runtime rate-limit buckets for the local status sheet.
     func refreshRateLimits() async {
         isLoadingRateLimits = true
         defer { isLoadingRateLimits = false }
@@ -73,7 +38,7 @@ extension CodexService {
             hasResolvedRateLimitsSnapshot = false
             rateLimitBuckets = []
             let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-            rateLimitsErrorMessage = message.isEmpty ? "Unable to load rate limits" : message
+            rateLimitsErrorMessage = message.isEmpty ? "Unable to load runtime limits" : message
         }
     }
 
@@ -86,15 +51,6 @@ extension CodexService {
 }
 
 private extension CodexService {
-    func normalizedUsageStatusThreadID(_ threadId: String?) -> String? {
-        guard let rawThreadId = threadId?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !rawThreadId.isEmpty else {
-            return nil
-        }
-
-        return rawThreadId
-    }
-
     // Retries the account RPC with both accepted explicit-param shapes because runtimes disagree.
     func fetchRateLimitsWithCompatRetry() async throws -> RPCMessage {
         do {

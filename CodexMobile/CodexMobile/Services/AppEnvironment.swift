@@ -7,7 +7,7 @@
 import Foundation
 
 enum AppEnvironment {
-    private static let defaultRelayURLInfoPlistKey = "PHODEX_DEFAULT_RELAY_URL"
+    private static let defaultRelayURLInfoPlistKey = "OPENDEX_DEFAULT_RELAY_URL"
 
     // Open-source builds should provide an explicit relay instead of silently
     // pointing at a hosted service the user does not control.

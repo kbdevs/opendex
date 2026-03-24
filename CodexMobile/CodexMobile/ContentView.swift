@@ -624,6 +624,14 @@ struct ContentView: View {
         }
 
         if selectedThread == nil,
+           let activeThreadId = codex.activeThreadId,
+           codex.pendingNotificationOpenThreadID == nil,
+           let activeThread = threads.first(where: { $0.id == activeThreadId }) {
+            selectedThread = activeThread
+            return
+        }
+
+        if selectedThread == nil,
            codex.activeThreadId == nil,
            codex.pendingNotificationOpenThreadID == nil,
            let first = threads.first {

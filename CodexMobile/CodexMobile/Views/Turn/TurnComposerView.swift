@@ -30,14 +30,8 @@ struct TurnComposerView: View {
 
     let runtimeState: TurnComposerRuntimeState
     let runtimeActions: TurnComposerRuntimeActions
-    let voiceButtonPresentation: TurnComposerVoiceButtonPresentation
 
     let selectedAccessMode: CodexAccessMode
-    let contextWindowUsage: ContextWindowUsage?
-    let rateLimitBuckets: [CodexRateLimitBucket]
-    let isLoadingRateLimits: Bool
-    let rateLimitsErrorMessage: String?
-    let shouldAutoRefreshUsageStatus: Bool
 
     let showsGitBranchSelector: Bool
     let isGitBranchSelectorEnabled: Bool
@@ -54,14 +48,11 @@ struct TurnComposerView: View {
     let onCreateGitBranch: (String) -> Void
     let onSelectGitBaseBranch: (String) -> Void
     let onRefreshGitBranches: () -> Void
-    let onRefreshUsageStatus: () async -> Void
 
     let onSelectAccessMode: (CodexAccessMode) -> Void
     let canHandOffToWorktree: Bool
     let onTapAddImage: () -> Void
     let onTapTakePhoto: () -> Void
-    let onTapVoice: () -> Void
-    let onCancelVoiceRecording: () -> Void
     let onTapCreateWorktree: () -> Void
     let onSetPlanModeArmed: (Bool) -> Void
     let onRemoveAttachment: (String) -> Void
@@ -158,10 +149,8 @@ struct TurnComposerView: View {
                     isQueuePaused: isQueuePaused,
                     activeTurnID: activeTurnID,
                     isThreadRunning: isThreadRunning,
-                    voiceButtonPresentation: voiceButtonPresentation,
                     onTapAddImage: onTapAddImage,
                     onTapTakePhoto: onTapTakePhoto,
-                    onTapVoice: onTapVoice,
                     onSetPlanModeArmed: onSetPlanModeArmed,
                     onResumeQueue: onResumeQueue,
                     onStopTurn: onStopTurn,
@@ -175,15 +164,6 @@ struct TurnComposerView: View {
                     .frame(maxWidth: .infinity, maxHeight: 0, alignment: .topLeading)
                     .overlay(alignment: .bottomLeading) {
                         VStack(alignment: .leading, spacing: 6) {
-                            if accessoryState.showsVoiceRecordingCapsule {
-                                VoiceRecordingCapsule(
-                                    audioLevels: accessoryState.voiceAudioLevels,
-                                    duration: accessoryState.voiceRecordingDuration,
-                                    onCancel: onCancelVoiceRecording
-                                )
-                                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                            }
-
                             TurnComposerAutocompletePanels(
                                 state: autocompleteState,
                                 onSelectFileAutocomplete: onSelectFileAutocomplete,
@@ -205,11 +185,6 @@ struct TurnComposerView: View {
                 isEmptyThread: isEmptyThread,
                 isWorktreeProject: isWorktreeProject,
                 selectedAccessMode: selectedAccessMode,
-                contextWindowUsage: contextWindowUsage,
-                rateLimitBuckets: rateLimitBuckets,
-                isLoadingRateLimits: isLoadingRateLimits,
-                rateLimitsErrorMessage: rateLimitsErrorMessage,
-                shouldAutoRefreshUsageStatus: shouldAutoRefreshUsageStatus,
                 showsGitBranchSelector: showsGitBranchSelector,
                 isGitBranchSelectorEnabled: isGitBranchSelectorEnabled,
                 availableGitBranchTargets: availableGitBranchTargets,
@@ -225,7 +200,6 @@ struct TurnComposerView: View {
                 onCreateGitBranch: onCreateGitBranch,
                 onSelectGitBaseBranch: onSelectGitBaseBranch,
                 onRefreshGitBranches: onRefreshGitBranches,
-                onRefreshUsageStatus: onRefreshUsageStatus,
                 onSelectAccessMode: onSelectAccessMode,
                 canHandOffToWorktree: canHandOffToWorktree,
                 onTapCreateWorktree: onTapCreateWorktree
@@ -450,10 +424,7 @@ private struct QueuedDraftsPanelPreviewWrapper: View {
                     composerMentionedFiles: [],
                     composerMentionedSkills: [],
                     composerReviewSelection: nil,
-                    isSubagentsSelectionArmed: true,
-                    isVoiceRecording: false,
-                    voiceAudioLevels: [],
-                    voiceRecordingDuration: 0
+                    isSubagentsSelectionArmed: true
                 ),
                 autocompleteState: TurnComposerAutocompleteState(
                     availableSlashCommands: TurnComposerSlashCommand.allCommands,
@@ -485,36 +456,20 @@ private struct QueuedDraftsPanelPreviewWrapper: View {
                 isWorktreeProject: false,
                 orderedModelOptions: [],
                 selectedModelID: nil,
-                selectedModelTitle: "GPT-5.3-Codex",
+                selectedModelTitle: "Runtime default",
                 isLoadingModels: false,
                 runtimeState: TurnComposerRuntimeState(
                     reasoningDisplayOptions: [],
                     effectiveReasoningEffort: nil,
                     selectedReasoningEffort: nil,
-                    reasoningMenuDisabled: true,
-                    selectedServiceTier: .fast
+                    reasoningMenuDisabled: true
                 ),
                 runtimeActions: TurnComposerRuntimeActions(
                     selectModel: { _ in },
                     selectAutomaticReasoning: {},
-                    selectReasoning: { _ in },
-                    selectServiceTier: { _ in }
-                ),
-                voiceButtonPresentation: TurnComposerVoiceButtonPresentation(
-                    systemImageName: "mic",
-                    foregroundColor: Color(.secondaryLabel),
-                    backgroundColor: .clear,
-                    accessibilityLabel: "Start voice transcription",
-                    isDisabled: false,
-                    showsProgress: false,
-                    hasCircleBackground: false
+                    selectReasoning: { _ in }
                 ),
                 selectedAccessMode: .onRequest,
-                contextWindowUsage: nil,
-                rateLimitBuckets: [],
-                isLoadingRateLimits: false,
-                rateLimitsErrorMessage: nil,
-                shouldAutoRefreshUsageStatus: false,
                 showsGitBranchSelector: false,
                 isGitBranchSelectorEnabled: false,
                 availableGitBranchTargets: [],
@@ -530,13 +485,10 @@ private struct QueuedDraftsPanelPreviewWrapper: View {
                 onCreateGitBranch: { _ in },
                 onSelectGitBaseBranch: { _ in },
                 onRefreshGitBranches: {},
-                onRefreshUsageStatus: {},
                 onSelectAccessMode: { _ in },
                 canHandOffToWorktree: false,
                 onTapAddImage: {},
                 onTapTakePhoto: {},
-                onTapVoice: {},
-                onCancelVoiceRecording: {},
                 onTapCreateWorktree: {},
                 onSetPlanModeArmed: { _ in },
                 onRemoveAttachment: { _ in },

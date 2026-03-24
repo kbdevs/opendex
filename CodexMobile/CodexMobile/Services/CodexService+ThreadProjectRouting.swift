@@ -5,7 +5,69 @@
 
 import Foundation
 
+struct CodexWorkspaceDirectoryEntry: Identifiable, Equatable, Sendable {
+    let id: String
+    let name: String
+    let path: String
+    let isHidden: Bool
+
+    init?(from object: RPCObject) {
+        guard let path = CodexThreadStartProjectBinding.normalizedProjectPath(object["path"]?.stringValue) else {
+            return nil
+        }
+
+        let fallbackName = (path as NSString).lastPathComponent
+        self.id = path
+        self.path = path
+        self.name = object["name"]?.stringValue ?? (fallbackName.isEmpty ? path : fallbackName)
+        self.isHidden = object["isHidden"]?.boolValue ?? false
+    }
+}
+
+struct CodexWorkspaceDirectoryListing: Equatable, Sendable {
+    let currentPath: String
+    let displayName: String
+    let parentPath: String?
+    let homePath: String?
+    let rootPath: String?
+    let volumesPath: String?
+    let directories: [CodexWorkspaceDirectoryEntry]
+
+    init?(from object: RPCObject) {
+        guard let currentPath = CodexThreadStartProjectBinding.normalizedProjectPath(object["currentPath"]?.stringValue) else {
+            return nil
+        }
+
+        self.currentPath = currentPath
+        self.displayName = object["displayName"]?.stringValue ?? {
+            let fallbackName = (currentPath as NSString).lastPathComponent
+            return fallbackName.isEmpty ? currentPath : fallbackName
+        }()
+        self.parentPath = CodexThreadStartProjectBinding.normalizedProjectPath(object["parentPath"]?.stringValue)
+        self.homePath = CodexThreadStartProjectBinding.normalizedProjectPath(object["homePath"]?.stringValue)
+        self.rootPath = CodexThreadStartProjectBinding.normalizedProjectPath(object["rootPath"]?.stringValue)
+        self.volumesPath = CodexThreadStartProjectBinding.normalizedProjectPath(object["volumesPath"]?.stringValue)
+        self.directories = (object["directories"]?.arrayValue ?? []).compactMap { value in
+            guard let entryObject = value.objectValue else {
+                return nil
+            }
+            return CodexWorkspaceDirectoryEntry(from: entryObject)
+        }
+    }
+}
+
 extension CodexService {
+    func listWorkspaceDirectories(path: String? = nil) async throws -> CodexWorkspaceDirectoryListing {
+        let normalizedPath = CodexThreadStartProjectBinding.normalizedProjectPath(path)
+        let params: JSONValue = .object(normalizedPath.map { ["path": .string($0)] } ?? [:])
+        let response = try await sendRequest(method: "workspace/listDirectory", params: params)
+        guard let resultObject = response.result?.objectValue,
+              let listing = CodexWorkspaceDirectoryListing(from: resultObject) else {
+            throw CodexServiceError.invalidResponse("Invalid response from bridge.")
+        }
+        return listing
+    }
+
     // Reuses the same runtime-readiness gate across every UI entry point that starts a new chat.
     func startThreadIfReady(
         preferredProjectPath: String? = nil,

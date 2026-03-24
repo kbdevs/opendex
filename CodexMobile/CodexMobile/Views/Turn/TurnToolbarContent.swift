@@ -15,7 +15,6 @@ struct TurnToolbarContent: ToolbarContent {
     let displayTitle: String
     let navigationContext: TurnThreadNavigationContext?
     let showsThreadActions: Bool
-    let isHandingOffToMac: Bool
     let isStartingNewChat: Bool
     let canHandOffToWorktree: Bool
     let isCreatingGitWorktree: Bool
@@ -27,7 +26,6 @@ struct TurnToolbarContent: ToolbarContent {
     let isRunningGitAction: Bool
     let showsDiscardRuntimeChangesAndSync: Bool
     let gitSyncState: String?
-    var onTapMacHandoff: (() -> Void)?
     var onTapWorktreeHandoff: (() -> Void)?
     var onTapNewChat: (() -> Void)?
     var onTapRepoDiff: (() -> Void)?
@@ -37,8 +35,7 @@ struct TurnToolbarContent: ToolbarContent {
 
     var body: some ToolbarContent {
         let hasTrailingCluster = repoDiffTotals != nil || showsGitActions
-        let isThreadActionLoading = isHandingOffToMac || isStartingNewChat
-        let canTapMacHandoff = onTapMacHandoff != nil && !isThreadActionLoading
+        let isThreadActionLoading = isStartingNewChat
         let canTapWorktreeHandoff = onTapWorktreeHandoff != nil
             && canHandOffToWorktree
             && !isCreatingGitWorktree
@@ -73,18 +70,6 @@ struct TurnToolbarContent: ToolbarContent {
         if showsThreadActions {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    // Keeps all "branch from here" actions together behind the compact toolbar affordance.
-                    Button {
-                        HapticFeedback.shared.triggerImpactFeedback(style: .light)
-                        onTapMacHandoff?()
-                    } label: {
-                        HStack(spacing: 10) {
-                            ResizableThreadActionSymbol(systemName: "arrow.left.arrow.right", pointSize: 13)
-                            Text("Hand off to Mac")
-                        }
-                    }
-                    .disabled(!canTapMacHandoff)
-
                     Button {
                         HapticFeedback.shared.triggerImpactFeedback(style: .light)
                         onTapWorktreeHandoff?()
@@ -108,7 +93,7 @@ struct TurnToolbarContent: ToolbarContent {
                     }
                     .disabled(!canTapNewChat)
                 } label: {
-                    TurnMacHandoffToolbarLabel(isLoading: isThreadActionLoading)
+                    TurnThreadActionsToolbarLabel(isLoading: isThreadActionLoading)
                 }
                 .accessibilityLabel("Thread actions")
             }
@@ -145,7 +130,7 @@ struct TurnToolbarContent: ToolbarContent {
     }
 }
 
-private struct TurnMacHandoffToolbarLabel: View {
+private struct TurnThreadActionsToolbarLabel: View {
     let isLoading: Bool
 
     var body: some View {

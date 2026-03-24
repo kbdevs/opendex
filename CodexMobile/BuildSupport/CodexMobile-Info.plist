@@ -4,12 +4,12 @@
 <dict>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>com.emanueledipietro.CodexMobile.refresh</string>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER).refresh</string>
 	</array>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Remodex</string>
+	<string>Opendex</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -28,10 +28,10 @@
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>CFBundleURLName</key>
-			<string>com.emanueledipietro.CodexMobile.auth</string>
+			<string>com.kbdevs.Opendex.auth</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>phodex</string>
+				<string>opendex</string>
 			</array>
 		</dict>
 	</array>
@@ -40,7 +40,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Remodex needs camera access to let you take photos and attach them to your messages.</string>
+	<string>Opendex needs camera access to let you take photos and attach them to your chats.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>
@@ -49,21 +49,19 @@
 		<true/>
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>CodexMobile needs local network access to connect to your Codex app-server running on your Mac.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Remodex needs microphone access to record voice notes for ChatGPT transcription.</string>
+	<string>Opendex needs local network access to connect to the Opendex bridge running on your Mac.</string>
 	<key>NSBonjourServices</key>
 	<array>
-		<string>_remodex-permission._tcp</string>
+		<string>_opendex-permission._tcp</string>
 	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>CodexMobile needs photo library access to let you attach images to your messages.</string>
+	<string>Opendex needs photo library access to let you attach images to your chats.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Remodex needs photo library access to let you save rendered diagrams and attachments.</string>
-	<key>PHODEX_CHATGPT_CALLBACK_SCHEME</key>
-	<string>$(PHODEX_CHATGPT_CALLBACK_SCHEME)</string>
-	<key>PHODEX_DEFAULT_RELAY_URL</key>
-	<string>$(PHODEX_DEFAULT_RELAY_URL)</string>
+	<string>Opendex needs photo library access to let you save rendered diagrams and attachments.</string>
+	<key>OPENDEX_AUTH_CALLBACK_SCHEME</key>
+	<string>$(OPENDEX_AUTH_CALLBACK_SCHEME)</string>
+	<key>OPENDEX_DEFAULT_RELAY_URL</key>
+	<string>$(OPENDEX_DEFAULT_RELAY_URL)</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>JetBrainsMono-Regular.ttf</string>

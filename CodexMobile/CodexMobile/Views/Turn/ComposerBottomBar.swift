@@ -24,10 +24,8 @@ struct ComposerBottomBar: View {
     let isQueuePaused: Bool
     let activeTurnID: String?
     let isThreadRunning: Bool
-    let voiceButtonPresentation: TurnComposerVoiceButtonPresentation
     let onTapAddImage: () -> Void
     let onTapTakePhoto: () -> Void
-    let onTapVoice: () -> Void
     let onSetPlanModeArmed: (Bool) -> Void
     let onResumeQueue: () -> Void
     let onStopTurn: (String?) -> Void
@@ -61,7 +59,7 @@ struct ComposerBottomBar: View {
     var body: some View {
         HStack(spacing: 12) {
             attachmentMenu
-            modelMenu
+            modelLabel
             reasoningMenu
             if isPlanModeArmed {
                 Divider()
@@ -83,16 +81,6 @@ struct ComposerBottomBar: View {
                 }
                 .accessibilityLabel("Resume queued messages")
             }
-
-            // Voice → Stop → Send
-            Button {
-                HapticFeedback.shared.triggerImpactFeedback()
-                onTapVoice()
-            } label: {
-                voiceButtonLabel
-            }
-            .disabled(voiceButtonPresentation.isDisabled)
-            .accessibilityLabel(voiceButtonPresentation.accessibilityLabel)
 
             if isThreadRunning {
                 Button {
@@ -128,29 +116,6 @@ struct ComposerBottomBar: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 10)
         .padding(.top, 10)
-    }
-
-    private var voiceButtonLabel: some View {
-        Group {
-            if voiceButtonPresentation.showsProgress {
-                ProgressView()
-                    .tint(voiceButtonPresentation.foregroundColor)
-                    .frame(width: 32, height: 32)
-                    .background(voiceButtonPresentation.backgroundColor, in: Circle())
-            } else if voiceButtonPresentation.hasCircleBackground {
-                Image(systemName: voiceButtonPresentation.systemImageName)
-                    .font(AppFont.system(size: 12, weight: .bold))
-                    .foregroundStyle(voiceButtonPresentation.foregroundColor)
-                    .frame(width: 32, height: 32)
-                    .background(voiceButtonPresentation.backgroundColor, in: Circle())
-            } else {
-                Image(systemName: voiceButtonPresentation.systemImageName)
-                    .font(metaTextFont)
-                    .foregroundStyle(metaLabelColor)
-                    .frame(width: plusTapTargetSide, height: plusTapTargetSide)
-                    .contentShape(Rectangle())
-            }
-        }
     }
 
     // MARK: - Menus
@@ -192,35 +157,12 @@ struct ComposerBottomBar: View {
         .accessibilityLabel("Attachment and plan options")
     }
 
-    private var modelMenu: some View {
-        Menu {
-            Text("Select model")
-            if isLoadingModels {
-                Text("Loading models...")
-            } else if orderedModelOptions.isEmpty {
-                Text("No models available")
-            } else {
-                ForEach(orderedModelOptions, id: \.id) { model in
-                    Button {
-                        HapticFeedback.shared.triggerImpactFeedback(style: .light)
-                        runtimeActions.selectModel(model.id)
-                    } label: {
-                        if selectedModelID == model.id {
-                            Label(TurnComposerMetaMapper.modelTitle(for: model), systemImage: "checkmark")
-                        } else {
-                            Text(TurnComposerMetaMapper.modelTitle(for: model))
-                        }
-                    }
-                }
-            }
-        } label: {
-            composerMenuLabel(
-                title: selectedModelTitle,
-                leadingImageName: runtimeState.showsSpeedBadgeInModelMenu ? "bolt.fill" : nil,
-                leadingImageIsSystem: true
-            )
-        }
-        .tint(metaLabelColor)
+    private var modelLabel: some View {
+        composerMenuLabel(
+            title: selectedModelTitle,
+            leadingImageName: nil,
+            leadingImageIsSystem: true
+        )
     }
 
     private var reasoningMenu: some View {
@@ -241,32 +183,6 @@ struct ComposerBottomBar: View {
                             }
                         }
                         .disabled(runtimeState.reasoningMenuDisabled)
-                    }
-                }
-            }
-
-            Section("Speed") {
-                Button {
-                    HapticFeedback.shared.triggerImpactFeedback(style: .light)
-                    runtimeActions.selectServiceTier(nil)
-                } label: {
-                    if runtimeState.isSelectedServiceTier(nil) {
-                        Label("Normal", systemImage: "checkmark")
-                    } else {
-                        Text("Normal")
-                    }
-                }
-
-                ForEach(CodexServiceTier.allCases, id: \.rawValue) { tier in
-                    Button {
-                        HapticFeedback.shared.triggerImpactFeedback(style: .light)
-                        runtimeActions.selectServiceTier(tier)
-                    } label: {
-                        if runtimeState.isSelectedServiceTier(tier) {
-                            Label(tier.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(tier.displayName)
-                        }
                     }
                 }
             }
@@ -348,15 +264,4 @@ struct ComposerBottomBar: View {
         .foregroundStyle(metaLabelColor)
         .contentShape(Rectangle())
     }
-}
-
-// Keeps the mic button state and styling decisions outside the layout code.
-struct TurnComposerVoiceButtonPresentation {
-    let systemImageName: String
-    let foregroundColor: Color
-    let backgroundColor: Color
-    let accessibilityLabel: String
-    let isDisabled: Bool
-    let showsProgress: Bool
-    let hasCircleBackground: Bool
 }

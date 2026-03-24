@@ -74,7 +74,7 @@ extension CodexService {
             } catch {
                 if consumeUnsupportedThreadFork(error) {
                     throw CodexServiceError.invalidInput(
-                        "This Mac bridge does not support native thread forks yet. Update Remodex on your Mac and retry."
+                        "This Opendex bridge does not support native thread forks yet. Update Opendex on your Mac and retry."
                     )
                 }
                 if consumeUnsupportedThreadForkOverrides(error, usesMinimalForkParams: &usesMinimalForkParams) {

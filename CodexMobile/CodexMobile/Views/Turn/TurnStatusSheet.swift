@@ -7,7 +7,6 @@
 import SwiftUI
 
 struct TurnStatusSheet: View {
-    let contextWindowUsage: ContextWindowUsage?
     let rateLimitBuckets: [CodexRateLimitBucket]
     let isLoadingRateLimits: Bool
     let rateLimitsErrorMessage: String?
@@ -28,7 +27,6 @@ struct TurnStatusSheet: View {
 
     private var statusCard: some View {
         UsageStatusSummaryContent(
-            contextWindowUsage: contextWindowUsage,
             rateLimitBuckets: rateLimitBuckets,
             isLoadingRateLimits: isLoadingRateLimits,
             rateLimitsErrorMessage: rateLimitsErrorMessage
